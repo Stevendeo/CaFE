@@ -81,8 +81,8 @@ module rec Type_RState :(
 				       *)
 	mutable s_preds : RState.Set.t ; (** Predecessors of this state *)
       
-	mutable summary_succs : RState.Set.t;
-	  (*(((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; *)
+	mutable summary_succs : 
+	  (((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; 
 	mutable summary_preds : RState.Set.t ;
       }
 
@@ -119,8 +119,8 @@ struct
 				   *)
     mutable s_preds : RState.Set.t ; (** Predecessors of this state *)
     
-    mutable summary_succs : RState.Set.t;
-      (*(((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; *)
+    mutable summary_succs : 
+      (((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; 
     mutable summary_preds : RState.Set.t ;
   }
  

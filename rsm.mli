@@ -1,4 +1,3 @@
-
 open Rsmast
 open Caretast
 open Formula_datatype
@@ -124,13 +123,13 @@ val setStart : state -> rsm -> unit
 
 val simplifyAutomaton : rsm -> unit
 
-val degeneralizeAuto : rsm -> rsm
+(*val degeneralizeAuto : rsm -> rsm
 
 val acceptance_when_ends : rsm -> bool
-
-(*
-val exitReachability : rsm -> unit
 *)
+
+val exitReachability : rsm -> unit
+
 (*
 val unfoldAutomaton : rsm -> unit
 *)
@@ -144,6 +143,5 @@ val testAcceptance :
      (Rsmast.Ext_state.t list * Formula_datatype.Id_Formula.Set.t)
             list)
     option
-(*
+
 val print_memoizers : unit -> unit
-*)

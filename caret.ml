@@ -189,11 +189,11 @@ let treatment file formula closure atoms =
 	
   end;(* Spurious *)
   begin (* Memoizers *)
-(*
+
    if Caret_option.Print_memo.get () 
    then
      Rsm.print_memoizers () 
-*)
+
   end;
   begin (* Print automaton *)
     

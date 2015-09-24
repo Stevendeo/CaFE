@@ -3,6 +3,7 @@ open Formula_datatype
 open Atoms
 open Atoms_utils
 open Rsmast
+open Counter_example
 
 open Type_RState
 open Type_Box
@@ -11,7 +12,6 @@ open Ext_state
 
 exception Inconsistent_atom of atom_kind
 exception Found of r_module 
-exception Deleted
 
 module Sid = State_builder.SharedCounter(struct let name = "sid_counter" end)
 module Mid = State_builder.SharedCounter(struct let name = "mid_counter" end)
@@ -24,7 +24,8 @@ let new_bid = Bid.next
 let new_rid = Rid.next
 
 let dkey = Caret_option.register_category "rsm:utils" 
-let dkey_simp = Caret_option.register_category "rsm:simpl"
+let dkey_loop = Caret_option.register_category "rsm:loop" 
+let dkey_exit = Caret_option.register_category "rsm:exit"
 let dkey_accept = Caret_option.register_category "rsm:accept"
 
 (* Imported functions from Caret_print *)
@@ -53,13 +54,13 @@ let simple_state (state:state) =
   ("\"" ^ (string_stmt state.s_stmt) ^ "_st_" ^ 
       (string_of_int state.s_id) ^ ": " ^ state.s_name ^ "\"")
 
-(*
 let simple_state_set set =  
   RState.Set.fold(
     fun st acc -> "\n" ^ (simple_state st) ^ acc
   )
     set
     "\n"
+
 let string_box box = 
   
   "Box " ^ box.b_name ^ "_" ^ (string_of_int box.b_id)
@@ -78,7 +79,7 @@ let string_box box =
       ^ "->" ^ (simple_state_set ret) ^ "\n")
     box.b_exits
     ""
-*)
+
 
 
 (** 2. Modules management  *)
@@ -188,7 +189,7 @@ let mkRState name ?(acpt = Id_Formula.Set.empty) stmt atom info r_mod =
 	s_mod = r_mod;      
 	s_succs = RState.Set.empty;
 	s_preds = RState.Set.empty;
-	summary_succs = RState.Set.empty;
+	summary_succs = RState.Map.empty;
 	summary_preds = RState.Set.empty;
     } 
 
@@ -311,7 +312,7 @@ let deleteRState state = (* todo : delete in boxes or change id to -1 *)
       state.s_succs <- RState.Set.empty;
       state.s_preds <- RState.Set.empty in
   (*state.s_stmt <- Cil.dummyStmt;*)
-    state.s_name <- "DELETED" ^ state.s_name;
+    state.s_name <- "DELETED";
     state.s_id <- -1 * state.s_id
       
 let addRState st ?(entry = false) ?(exits = false) r_mod = 
@@ -362,19 +363,6 @@ let mkTrans sta sto =
   sta.s_succs <- RState.Set.add sto sta.s_succs;
   sto.s_preds <- RState.Set.add sta sto.s_preds
 
-let mkSummaryTrans call ret = 
-
-  let () = 
-    if not (isCall call)
-    then Caret_option.fatal "%s is not a call" call.s_name
-    else 
-      if not (isRet ret)
-      then Caret_option.fatal "%s is not a return" ret.s_name
-  in
-
-  ret.summary_preds <- RState.Set.add call ret.summary_preds;
-  call.summary_succs <- RState.Set.add ret call.summary_succs
-
 (** Rsm management *)
 let mkEmptyRsm nam = 
   {
@@ -385,6 +373,53 @@ let mkEmptyRsm nam =
     (*inf_states = [];*)
     until_set = Id_Formula.Set.empty;
   }
+
+(* Copy primitives *)
+
+let copyRState s = 
+  let n = new_sid () 
+    in
+      {
+	s_name = (string_of_int n) ^ s.s_name  ;
+	s_accept = s.s_accept ;
+	call = s.call ;       
+	return = s.return ;   
+	s_stmt = s.s_stmt ;
+	s_atom = s.s_atom ;
+	s_info = s.s_info;
+	s_id = n ;
+	s_mod = s.s_mod ;      
+	s_succs = s.s_succs ;
+	s_preds = s.s_preds;
+	summary_succs = s.summary_succs;
+	summary_preds = s.summary_preds;
+    } 
+
+let copy_mod m = m
+
+let copy_rsm rsm =  
+  let id = new_rid () in
+  {
+
+    name = rsm.name ^ "copy" ^ (string_of_int id);
+
+    rsm_mod = 
+      Rsm_module.Set.fold 
+	(fun rmod acc -> Rsm_module.Set.add (copy_mod rmod) acc) 
+	rsm.rsm_mod
+	Rsm_module.Set.empty;
+    
+    start = RState.Set.fold 
+	(fun st acc -> RState.Set.add (copyRState st) acc) 
+	rsm.start
+	RState.Set.empty;
+
+    until_set = rsm.until_set;
+    rsm_id = id
+
+  
+  }
+
 
 let addMod r_mod rsm = rsm.rsm_mod <- Rsm_module.Set.add r_mod rsm.rsm_mod
 
@@ -479,432 +514,204 @@ let addBuchiToRStates rsm =
     )
     rsm.rsm_mod
 
-let rec deleteUselessBranch state =
-    (*if Caret_option.Simplify.get () = 2
-      then*)
-  if 
-    (RState.Set.exists (fun s -> not (isDeleted s)) state.s_succs)
-    && not(RState.Set.mem state state.s_succs)
-  then () 
-  else
-    let () = Caret_option.debug ~dkey:dkey_simp "Deleting %s. Preds = %s" 
-      (simple_state state) 
-      (RState.Set.fold 
-	 (fun s acc -> acc ^ "\n" ^ (simple_state s)) state.s_preds "" )
-    in
-    let preds = 
-      state.s_preds
-    in
-    let () = deleteRState state
-    in
-    RState.Set.iter
-      deleteUselessBranch
-      preds
 
-(* state -> exits *)
-let entry_exit_tbl = RState.Hashtbl.create 106
-
-let update_entry_exit_tbl visited_states exts = 
-  RState.Set.iter
-    (fun st -> 
-      let old_bind = 
+(*let real_nexts box state = 
+  (* box is in option, only in case state is an exit *)
+  if state.call <> None
+  then
+    begin
+      Caret_option.debug ~dkey "This is a call : ";
+      let b,next = Extlib.the state.call in 
+      Caret_option.debug 
+	~dkey 
+	"Box called : %s "
+	(string_box b);
+      [next]
+  else 
+    if isExit state
+    then
+      begin
+	Caret_option.debug ~dkey "This is an exit";
 	try 
-	  RState.Hashtbl.find entry_exit_tbl st
+	  Caret_option.debug 
+	    ~dkey 
+	    "Box returned from : %s "
+	    (string_box box);
+	  [throughBox state box]
 	with
-	  Not_found -> RState.Set.empty
+	  Failure _ (* hd *) | Not_found (* throughBox *) -> 
+	    Caret_option.debug ~dkey "This exit is unplugged"
+      end
+    else 
+      begin
+	Caret_option.debug ~dkey "This is not an exit nor a call";
+	state.s_succs
+      end
+      *)
+(** Makes a dfs over the automaton. If an exception is raised in pre or post, 
+    when pedantic is set to [true], Dfs_stopped will be raised. *)
+
+let dfs ?(pre = ignore) ?(post = ignore) start = 
+  Caret_option.debug ~dkey "Dfs for %s" (simple_state start);
+  let visited_config = ref Config.Set.empty in
+  (* Todo : in case of multiple starts, doesn't work *)
+  let rec dfsRun  box_list state = 
+    let () = 
+      Caret_option.debug ~dkey "%s"
+	(simple_state state)
+    in
+    let config =  
+      state, box_list
+    in
+    if Config.Set.mem config !visited_config
+    then 
+      Caret_option.debug
+	~dkey
+	"Config %s already visited"
+	(Config.varname config) 
+    else
+      let () = 
+	Caret_option.debug
+	~dkey
+	"Config %s never visited"
+	(Config.varname config)
       in
-      RState.Hashtbl.replace 
-	entry_exit_tbl 
-	st
-	(RState.Set.union old_bind exts);
-    )
-    visited_states
+      let () = pre state
+      in
+      let () =
+	visited_config := Config.Set.add config !visited_config in 
+      if state.call <> None
+      then
+	begin
+	  Caret_option.debug ~dkey "This is a call : ";
+	  let box,_ = Extlib.the state.call in 
+	  
+	  Caret_option.debug 
+	    ~dkey 
+	    "Box called : %s "
+	    (string_box box);
+	  
+	  let nexts = throughBox state box in
+     	  RState.Set.iter (dfsRun (box::box_list)) nexts
+	end
+      else 
+	if isExit state
+	then
+	  begin
+	    Caret_option.debug ~dkey "This is an exit";
+	    try 
+	      let box = List.hd box_list in
+	      Caret_option.debug 
+		~dkey 
+		"Box returned : %s "
+		(string_box box);
+	      let nexts = throughBox state box in
+	     
+	      RState.Set.iter (dfsRun (List.tl box_list)) nexts
+	    with
+	      Failure _ (* hd *) -> assert false 
+	    | Not_found (* throughBox *) -> 
+		Caret_option.debug ~dkey "This exit is unplugged"
+	  end
+	else 
+	  begin
+	    Caret_option.debug ~dkey "This is not an exit";
+	    RState.Set.iter (
+	      fun st -> 
+		(*try*)
+		  dfsRun box_list st 
+		(*with
+		| _ -> if pedantic then raise Dfs_stopped else ()*)
+	    ) state.s_succs
+	  end;
+      
+      
+      post state
+  in
+  dfsRun [] start
     
 let simplifyAutomaton rsm = 
   
-  let () = Caret_option.feedback "Simplification" in
-  let treated_modules = ref Rsm_module.Set.empty in
-  let untreated_states = 
-    ref 
-      (Rsm_module.Set.fold
-	 (fun rmod acc -> RState.Set.union acc rmod.states)
-	 rsm.rsm_mod
-	 RState.Set.empty
-      ) in
-  let rec simplifyModule r_mod = 
+  Caret_option.debug ~level:1 ~dkey "Starting the simplification";
+  (* A state is not accessible if no transitions goes to it and is not callable
+     (ie is not the beginning of a module). *)
+  
+  let state_accessible = ref RState.Set.empty
     
-    let () = 
-      treated_modules := Rsm_module.Set.add r_mod !treated_modules
+  in
+
+  let useless_states = ref RState.Set.empty in
+
+  let pre state = 
+    if not(RState.Set.mem state !state_accessible)
+    then
+      begin
+        
+	Caret_option.debug ~dkey 
+	  "RState %s accessible : computation. Succs = %s"
+	  (simple_state state)
+	  (RState.Set.fold 
+	     (fun s a -> a ^ simple_state s) state.s_succs "");
 	
-    in
+	state_accessible := RState.Set.add state !state_accessible
+	  
+      end	    
+    else
+      Caret_option.debug ~dkey "RState %s already treated" (simple_state state);
     
-    let rec dfsInMod visited_states state = 
-      
-      if isDeleted state then raise Deleted
-      else
-	let () = 
-	  untreated_states := RState.Set.remove state !untreated_states in
-	if RState.Hashtbl.mem entry_exit_tbl state
-	then 
-	  update_entry_exit_tbl 
-	      visited_states
-	    (RState.Hashtbl.find entry_exit_tbl state)
-	else
-          if RState.Set.mem state visited_states
-	  then 
-	    Caret_option.debug ~dkey:dkey_simp
-	      "State %s already visited"
-	      (Caret_print.simple_state state)
-	  else
-	    if isExit state
-	    then 
-	      update_entry_exit_tbl 
-		visited_states
-		(RState.Set.singleton state)
-	    else (* Not an exit *)
-
-	      let at_least_one_path_ok = ref false 
-
-		(* We set this to true if one execution of the following 
-		   dfs without delete *)
-	      in
-	      if isCall state
-	      then
-		let box,entries = (Extlib.the state.call) 
-		in
-		
-		let called_module = box.r_mod_repres
-		in
-		
-		let () = simplifyModule called_module
-		in
-	        let corresp_returns = 
-		  RState.Set.fold
-		    (fun entry acc -> 
-		      try 
-			let exits = (RState.Hashtbl.find entry_exit_tbl entry)
-			in
-			RState.Set.fold
-			  (fun ext acc2 -> 
-			    let not_deleted_rets = 
-			      RState.Set.filter
-				(fun st -> not(isDeleted st))
-				(throughBox ext box)
-			    in
-			    let () = (* We can update here the exits of the 
-					box *)
-			    box.b_exits <- 
-			      (RState.Map.add 
-				 ext 
-				 not_deleted_rets 
-				 box.b_exits)
-			    in
-			    RState.Set.union not_deleted_rets acc2)
-			  exits 
-			  acc
-			  
-		      with Not_found -> acc
-		    )
-		    entries
-		    RState.Set.empty
-		in
-		if RState.Set.cardinal corresp_returns = 0
-		then 
-		  let () = Caret_option.debug ~dkey 
-		    "%s does not have any reachable return : delete"
-		    state.s_name
-		  in
-		  let () = deleteUselessBranch state in raise Deleted
-		else 
-		  begin
-		    let () = 
-		      RState.Set.iter
-			(fun return -> 
-			  try 
-			    let () = 
-			      mkSummaryTrans state return 
-			    in
-			    let () = 
-			      dfsInMod 
-				(RState.Set.add state visited_states) 
-				return
-			    in
-			    at_least_one_path_ok := true
-			  with
-			    Deleted -> ()
-			)
-			corresp_returns
-		    in 
-		    if not !at_least_one_path_ok
-		    then let () = deleteUselessBranch state in raise Deleted 
-		  end
-	      else (* Not an exit nor a call. We continue the dfs if we can *)
-		let () = 
-		  RState.Set.iter
-		    (fun next -> 
-		      try 
-			let () = 
-			  dfsInMod (RState.Set.add state visited_states) next
-			in
-			at_least_one_path_ok := true
-		      with
-			Deleted -> ()
-		    )
-		    state.s_succs
-		in 
-		if not !at_least_one_path_ok
-		then let () = deleteRState state in raise Deleted 	
-    in
-    
-	RState.Set.iter
-	  (fun entry -> 
-	    try dfsInMod RState.Set.empty entry 
-	    with Deleted -> () (* todo : delete entry ? *))
-	  (if isMainMod r_mod then rsm.start else r_mod.entries)
-  in
-  simplifyModule (getMainMod rsm);
-  RState.Set.iter
-    deleteRState
-    !untreated_states
-  
-let degeneralizeAuto rsm = 
-  
-  (* To call iff there is more than one acceptance condition. *)
-  
-  let degen_rsm = mkEmptyRsm ("degen_" ^ rsm.name)
-  in
- 
-  let mod_hashtbl =
-    Rsm_module.Hashtbl.create 
-      (Rsm_module.Set.cardinal rsm.rsm_mod)
   in
   
-  (* formula -> elt -> copy of "elt" for the automaton "formula" *)
-
-  let state_hashtbl = 
-    Id_Formula.Hashtbl.create 
-      (Id_Formula.Set.cardinal rsm.until_set)
-  in
-  
-  let box_hashtbl = 
-    Id_Formula.Hashtbl.create
-      (Id_Formula.Set.cardinal rsm.until_set)
-  in
-    
-  let init_mod_hashtbl () = 
-    Rsm_module.Set.iter
-      (fun m -> 
-	Rsm_module.Hashtbl.add
-	  mod_hashtbl
-	  m
-	  (mkModule 
-	     ("copy_of_" ^ m.mod_name)
-	     m.is_func
+  let post state =
+    if Caret_option.Simplify.get() <= 1
+    then () 
+    else
+      if not (isExit state) 
+      	&& (isCall state) 
+	&& 
+	  (RState.Set.for_all 
+	     (fun succ -> RState.Set.mem succ !useless_states) 
+	     state.s_succs
 	  )
-      )
-      rsm.rsm_mod
-  in
-  (*
-  let init_state_box_hashtbls formula = 
-    Id_Formula.Hashtbl.add 
-      state_hashtbl
-      formula
-      (RState.Hashtbl.create 103);
-    
-    Id_Formula.Hashtbl.add 
-      box_hashtbl
-      formula
-      (Box.Hashtbl.create 41);
-  in
-  *)
-  let rec copy_state states boxs s = 
-    
-    if RState.Hashtbl.mem states s
-    then RState.Hashtbl.find states s
-    else
-    let n = new_sid () 
-    in
-    let new_state = 
-      {
-	s_name = "copy_" ^  (string_of_int n) ^ s.s_name;
-	s_accept = s.s_accept ;
-	call = 
-	  (match s.call with
-	    None -> 
-	      None
-	  | Some (b,set) -> 
-	    Some (copy_box states boxs b, 
-		  copy_set_state states boxs set));
-	return =  	
-	  (match s.return with
-	    None -> 
-	      None
-	  | Some (b,set) -> 
-	    Some (copy_box states boxs b, 
-		  copy_set_state states boxs set));
-	
-	s_stmt = s.s_stmt ;
-	s_atom = s.s_atom ;
-	s_info = s.s_info;
-	s_id = n ;
-	s_mod = Rsm_module.Hashtbl.find mod_hashtbl s.s_mod ;      
-	s_succs = copy_set_state states boxs s.s_succs ;
-	s_preds = copy_set_state states boxs s.s_preds;
-	summary_succs = copy_set_state states boxs s.summary_succs;
-	summary_preds = copy_set_state states boxs s.summary_preds;
-      } 
-    in
-    let () = RState.Hashtbl.add states s new_state
-    in new_state
-
-  and copy_set_state states boxs set_state = 
-    RState.Set.fold 
-      (fun s acc -> 
-	RState.Set.add 
-	  (copy_state states boxs s)
-	  acc
-      )
-      set_state
-      RState.Set.empty
-
-      (* We will actually not copy the mod,
-	 but complete the degeneralized one. *)
-
-	
-  and copy_box states boxs b = 
-    if Box.Hashtbl.mem boxs b 
-    then Box.Hashtbl.find boxs b
-    else
-      let new_id = new_bid () in
-      let new_box = 
-	{
-	  b_id = new_id;
-	  b_name = "copy_" ^ (string_of_int new_id) ^ b.b_name;
-	  r_mod_repres = Rsm_module.Hashtbl.find mod_hashtbl b.r_mod_repres;
-	  r_mod_belong = Rsm_module.Hashtbl.find mod_hashtbl b.r_mod_belong;
+	&& 
+	  (not(isMainMod state.s_mod) || 
+	      ((List.length state.s_stmt.Cil_types.succs) = 0))
+      then 
+	let () = 
+	  Caret_option.debug 
+	    ~dkey 
+	    "%s is useless"
+	    (simple_state state)in
+	useless_states := RState.Set.add state !useless_states
 	  
-	  box_atom = b.box_atom;
-	  box_tag = b.box_tag;
-	  
-	  b_entries = 
-	    RState.Map.fold
-	      (fun key bind acc -> 
-		RState.Map.add 
-		  (copy_state states boxs key)
-		  (copy_set_state states boxs bind)
-		  acc
-	      )
-	      b.b_entries
-	      RState.Map.empty;
-	  	   
-	  b_exits = 
-	    RState.Map.fold
-	      (fun key bind acc -> 
-		RState.Map.add 
-		  (copy_state states boxs key)
-		  (copy_set_state states boxs bind)
-		  acc
-	      )
-	      b.b_exits
-	      RState.Map.empty;
-	}
-      in
+      else ()
       
-      let () = Box.Hashtbl.add boxs b new_box 
-      in new_box
+  in
+  let () =
+    RState.Set.iter (dfs ~pre ~post) rsm.start ;  
+    Caret_option.debug ~dkey "Dfs done !"
   in
 
-  
-  let complete_degen_mod states boxs degen_mod m = 
-    
-    degen_mod.states <- 
-      (RState.Set.union 
-	 degen_mod.states
-	 (copy_set_state states boxs m.states)
-      );
-    
-    degen_mod.entries <- 
-      (RState.Set.union 
-	 degen_mod.states
-	 (copy_set_state states boxs m.states)
-      );
+  Caret_option.debug ~dkey "Starting suppression";
 
-    degen_mod.exits <- 
-      (RState.Set.union 
-	 degen_mod.states
-	 (copy_set_state states boxs m.states)
-      )
-  in
-  let fill_new_modules formula = 
-    Rsm_module.Hashtbl.iter
-      (fun old_mod degen_mod -> 
-	let st_tbl = Id_Formula.Hashtbl.find state_hashtbl formula
-	  
-	in
-	let box_tbl = Id_Formula.Hashtbl.find box_hashtbl formula
-	  
-	in
-	complete_degen_mod st_tbl box_tbl degen_mod old_mod)
-      mod_hashtbl
-  in
-  
-  init_mod_hashtbl ();
+  Rsm_module.Set.iter
+    ( fun r_mod -> 
       
-  degen_rsm.rsm_mod <- 
-    (Rsm_module.Hashtbl.fold 
-       (fun _ b acc -> Rsm_module.Set.add b acc)
-       mod_hashtbl
-       Rsm_module.Set.empty
-    );
-  
-  Id_Formula.Set.iter
-    (fun formula -> fill_new_modules formula)
-    rsm.until_set;
+      RState.Set.iter
+	( fun state -> 
+	  if not(RState.Set.mem state !state_accessible)
+		||(RState.Set.mem state !useless_states)
+	  then deleteRState state
+	)
+	r_mod.states
+    )
 
-  degen_rsm.start <- rsm.start;
-  
-(* Todo : transitions between acceptance conditions *)
-  
-  degen_rsm
+    rsm.rsm_mod
 
-let magic_backward_dataflow states =
-  [RState.Set.choose states]
-
-let acceptance_when_ends rsm = 
-  assert (Caret_option.Main_ends.get ());
-  let accept_card = Id_Formula.Set.cardinal rsm.until_set 
-  in
+(* This function adds a transition from calls to rachable exits and registers
+   the path taken during the call
+*)
   
-  let main_mod = getMainMod rsm 
-  in
-  
-  let accepting_states = 
-    RState.Set.filter 
-      (fun st -> match st.s_stmt.Cil_types.skind with
-	Cil_types.Return _ -> 
-	  (Id_Formula.Set.cardinal st.s_accept) = accept_card
-      | _ -> false
-      )
-      (main_mod.states)
-  in
-  (* All the states in accepting_states are error states. We need to check if
-     there is a path from Init to this state. The idea is that the whole 
-     automaton is a counter-example : we will do a backward dataflow to
-     refine it. *)
-  
-  (* magic_backward_dataflow : state -> state_list
-     magic_backward_dataflow = lazy abstraction*)
-  let accepting_path = 
-    magic_backward_dataflow 
-      accepting_states
-  in
-  if accepting_path = [] 
-  then false 
-  else true
-
-  
-(*    
- (* state -> exit -> paths from state to exit *)
+  (* state -> exit -> paths from state to exit *)
   
 (* State in Loop -> Loop Head of Loop -> Paths from State to Loop Head *)
 let loop_memoizer = RState.Hashtbl.create 42
@@ -921,6 +728,8 @@ let exitReachability rsm =
   let () = Caret_option.feedback "Exit reachability" in
   let treated_mod = ref Rsm_module.Set.empty
   in
+
+
 
   let rec update_table form_acc tbl zip_path exit_state = 
     try 
@@ -939,12 +748,10 @@ let exitReachability rsm =
 		(Caret_print.string_raw_atom current_state.s_accept)
 		(Caret_print.string_raw_atom form_acc)
 	  in	  
-	  let () = (* State current_state *)
+	  let () =     (* State s *)
 	    Caret_option.debug ~dkey:dkey_exit 
-	      "Table %s :\nRegistering path from\n--%s to\n--%s :\n%s\nAccepts : %s"
-	      (if tbl == loop_memoizer then "loop_mem" 
-	       else if tbl == path_to_loop_memoizer then "path_to_loop_mem"
-	       else "entry_exit_mem")
+	      "Registering path from\n--%s to\n--%s :\n%s\nAccepts : %s"
+	      
 	      (simple_state current_state)
 	      (simple_state exit_state)
 	      (List.fold_left 
@@ -1152,8 +959,9 @@ let exitReachability rsm =
   in
 
   let memoized_as_reachable_exit visited_states state = 
-    assert(RState.Hashtbl.mem entry_exit_hashtbl state);
+    assert( RState.Hashtbl.mem entry_exit_hashtbl state);
     
+	    (* We update the entry_exit memoizer *)
     let exit_hashtbl = 
       RState.Hashtbl.find 
 	entry_exit_hashtbl state
@@ -1431,7 +1239,7 @@ let exitReachability rsm =
   in
   RState.Set.iter
     (dfs []) rsm.start
-  *)  
+    
 let print_extended_path path = 
   let rec __print deepness acc = function
     | (State s) :: tl -> 
@@ -1501,37 +1309,16 @@ let print_memoizer tbl =
 	finish_tbl
     )
     tbl
-    (*
+    
 let print_memoizers () = 
   
   List.iter 
     print_memoizer 
     [loop_memoizer; path_to_loop_memoizer ; entry_exit_hashtbl]
 
-(*let testSimpleAcceptance rsm = 
-
-  let main_mod = getMainMod rsm in
-  
-  let cardinal_accepting = Id_Formula.Set.cardinal rsm.until_set in
-
-  let accepting_returns = 
-    RState.Set.filter
-      (fun st -> match st.s_stmt.skind with 
-	Return _ -> Id_Formula.Set.cardinal st.s_accept = cardinal_accepting 
-      | _ -> )
-*)
-    *)
-let testAcceptance _ = None (*
-  if Caret_option.Main_ends.get () then
-    acceptance_when_ends rsm
-  else 
-    Caret_option.fatal 
-      "Error : program doesn't ends : we don't treat it yet."*)
-    
-  (*try 
+let testAcceptance rsm = 
+  try 
     analyse_paths rsm path_to_loop_memoizer loop_memoizer;
     None
   with
     Path_found (p,q) -> Some (p,q)
-			 
-  *)

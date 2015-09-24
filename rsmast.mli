@@ -57,8 +57,7 @@ module rec Type_RState :
       (** Predecessors of this state *)
       
       mutable summary_succs : 
-	(*(((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; *)
-	RState.Set.t;
+	(((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; 
       mutable summary_preds : RState.Set.t ;
     }
    end)
