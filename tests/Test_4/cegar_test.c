@@ -7,7 +7,7 @@ void f(int x){
 int main(){
 int x = 0;
 
-while (x < 10){
+while (1){
 	x ++;
 	if (x == 2 || x == 9) f(x);
 

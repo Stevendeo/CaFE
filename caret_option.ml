@@ -129,10 +129,10 @@ module Only_main = True
     let help = "when on (on by default), only checks the first loop encourntered in the main.c file. Infinite paths on other functions are not considered."
    end)
 
-module Main_ends = False
+module Main_ends = True
     (struct
     let option_name = "-caret-end"
-    let help = "when on (off by default), considers the c program ends eventually in any case."
+    let help = "when on (on by default), considers the c program ends eventually in any case."
    end)
 
 module Atom_simp = True
@@ -157,11 +157,11 @@ module Spurious = False
       let help = "when on (off by default), prints the list of statement where formulas were found spurious"
     end )
 
-module Cegar = True
+module Ceana = True
     (
     struct
-      let option_name = "-cegar"
-      let help = "when on (on by default), applies a counter example guided abstraction refinement"
+      let option_name = "-ceana"
+      let help = "when on (on by default), applies a counter example analysis"
     end )
 
 module Print_Cegar = False

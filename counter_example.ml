@@ -196,7 +196,9 @@ let testConsistency state atom =
 
 let cegar_path 
     ?(init = None) ?(acpt = Id_Formula.Set.empty) (path:Ext_state.t list) = 
+
   let open Ext_state in
+
   let end_state = ref init in
   let in_loop = ref [] in
 
@@ -448,26 +450,29 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
   let () = resetAllZippers () in
   let rec cegar_loops 
       loop_head acpt_acc possible_states init loops kept_loops = 
-    
+    if not (Caret_option.Ceana.get ()) then true 
+    else
     match loops with 
       (loop,acpt) :: tl ->  begin  (* loop :: tl *)
 	let res = cegar_loop init loop in 
-	let () = if tl <> [] then resetOneStepZippers loop loop_head 
-	in
 	match res with
 	  
-	  Ok (a,s) -> 
+	  Ok (a,s) ->
 	    if Cvalue.Model.is_included s init
 	    (* Then we can take this path an infinite number of time : we can
 	       stop analysing this loop. *)
+	    (* Todo : is it here we stop the analysis, having found a 
+	       nice loop ? *)
 	    then 
+	    (*let () = if tl <> [] then resetOneStepZippers loop loop_head 
+	    in*)
 	      cegar_loops loop_head
 		(Id_Formula.Set.union a acpt_acc)
 		(s :: possible_states)
 		init 
 		tl
 		kept_loops
-		
+		 
 	    else
 	      let () = Caret_option.debug ~dkey 
 		"Possibly spurious loop, not included in @[%a@]. New state : @[%a@]" 
@@ -558,11 +563,15 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 			| Failure "get_right" -> 
 			  assert false
 		      else
-		      match cegar_path path with
 			
-			Spurious _ -> 
-			  acc
-		      | Ok (_,s) -> (s,path) :: acc
+			if not (Caret_option.Ceana.get ()) then
+			  (getAndMove loop_head.s_stmt,path)::acc
+			else 
+			  match cegar_path path with
+			    
+			    Spurious _ -> 
+			      acc
+			  | Ok (_,s) -> (s,path) :: acc
 		    )
 		    []
 		    paths_to_loop_head
@@ -620,7 +629,7 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 		    
 		  )		     
 		       
-		   in
+		in
 		
 		let can_be_accepting = 
 		  let total_acpt = 
@@ -649,27 +658,64 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 		then
 		  ()
 		else
-		  List.iter
+		    List.iter
 		    (fun (s,path) -> 
 		      if List.mem s !treated_states
 		      then ()
 		      else 
-			let () = 
-			  treated_states := s :: !treated_states 
+			let () = Caret_option.debug ~dkey ~level:3 
+			  "Path analysed : %s"
+			  (Caret_print.string_path
+			     (List.map Ext_state.to_state path))
 			in
-			if 
-			  cegar_loops  loop_head
-			    Id_Formula.Set.empty
-			    [] 
-			    s 
-			    loops
-			    []
+			let () = treated_states := s :: !treated_states 
+			in
+			if (not(Caret_option.Ceana.get ())) 
 			then
-		          raise (Path_found (path,loops))
+			  let () = 
+			    Caret_option.feedback
+			      "Ceana not active"
+			  in
+			  let last_state_is_ret = 
+			    match 
+			      (path 
+				  |> List.rev 
+				  |> List.hd 
+				  |> Ext_state.to_state).s_stmt.skind
+			    with
+			      Return _ -> true
+			    | _ -> false
+			  
+			  in
+			  if (Caret_option.Main_ends.get ())
+			  then
+			    if last_state_is_ret
+			    then raise (Path_found (path,[]))
+			    else () 
+			  else 
+			    if not (last_state_is_ret)
+			    then raise (Path_found (path,loops))
+			    else () 
+		      	      
 			else
-			  ()
+			  
+			  let () = 
+			    Caret_option.feedback
+			      "Ceana is active"
+			  in
+			  if  (
+			    cegar_loops  loop_head
+			      Id_Formula.Set.empty
+			      [] 
+			      s 
+			      loops
+			      [])
+			  then
+		            raise (Path_found (path,loops))
+			  else
+			    ()
 		    )
-		    
+		      
 		    paths_ok
 		    
 	    )

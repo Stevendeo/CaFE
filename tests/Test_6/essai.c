@@ -7,7 +7,7 @@
  * Seed:      3228368648
  */
 
-#include "csmith-2.1.0/runtime/csmith.h"
+#include "/usr/local/include/csmith-2.1.0/csmith.h"
 
 
 static long __undefined;
