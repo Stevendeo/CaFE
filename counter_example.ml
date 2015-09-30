@@ -15,8 +15,8 @@ exception Path_found of
 
 exception Bad_counterexample*)
 
-let dkey = Caret_option.register_category "counter_example"
-
+let dkey = Caret_option.register_category "counter_example:ceana"
+let dkey_reg = Caret_option.register_category "counter_example:regist" 
 (*let mod_stmt_states_hashtbl = Caret_visitor.mod_stmt_states_hashtbl
 
 let stmt_call_ret_hashtbl = Caret_visitor.stmt_call_ret_hashtbl
@@ -35,7 +35,7 @@ let main () = Globals.Functions.find_by_name "main"
 *)
 let registerValuesLoop (stmt,_,s_list) = 
 
-  Caret_option.debug ~dkey "@[%a@] being studied" Printer.pp_stmt stmt;
+  Caret_option.debug ~dkey:dkey_reg "@[%a@] being studied" Printer.pp_stmt stmt;
       try
 	begin 
 	  let joined_s_list = 
@@ -51,7 +51,13 @@ let registerValuesLoop (stmt,_,s_list) =
 	    in
 	    match res_opt with
 	      None -> raise (Failure "registering")
-	    | Some s -> s
+	    | Some s -> 
+	      let () = 
+		Caret_option.debug ~dkey:dkey_reg 
+		  "Registering @[%a@]" 
+		  Db.Value.pretty_state s
+	      in
+	      s
 	  in
       let old_bind = 
 	try 
@@ -66,7 +72,8 @@ let registerValuesLoop (stmt,_,s_list) =
 	(Zipper.insert old_bind joined_s_list)
 	end
       with
-	Failure "registering" -> ()
+	Failure "registering" -> 
+	  Caret_option.debug ~dkey:dkey_reg "Failed to being registered"
 
 let printValueResults () = 
   Stmt.Hashtbl.iter
@@ -99,18 +106,25 @@ let resetOneStepZippers path edge =
     "Reseting path %s" (Caret_print.string_path (List.map to_state path));
   try List.iter 
     (fun est ->
-      match est with State st ->
-	if st.return <> None then () else
-	let () = Caret_option.debug ~dkey ~level:3 
-	  "Reseting %s" st.s_name in
-	if st.return <> None then () else
-	let old_bind = Stmt.Hashtbl.find real_system st.s_stmt in
-	Stmt.Hashtbl.replace real_system st.s_stmt (Zipper.move_left old_bind);
-	if RState.equal st edge 
-	then failwith "stop" ; ()
-      | _ -> ())
+      try 
+	match est with 
+	  State st ->
+	    if st.return <> None then () else
+	      let () = Caret_option.debug ~dkey ~level:3 
+		"Reseting %s" st.s_name in
+		let old_bind = Stmt.Hashtbl.find real_system st.s_stmt in
+		Stmt.Hashtbl.replace real_system st.s_stmt 
+		  (Zipper.move_left old_bind);
+		if RState.equal st edge 
+		then failwith "stop" ; ()
+     
+	| _ -> ()
+     with
+      | Invalid_argument "move_left" -> 
+	Caret_option.debug ~dkey ~level:3 
+	  "Nothing to reset here !")
     path
-  with Failure _ -> ()
+  with Failure "stop" -> ()
 
 let getAndMove stmt = 
   reseted := false;
@@ -206,7 +220,7 @@ let cegar_path
     "Analysing the path %s"
     (Caret_print.string_path (List.map to_state path)) in
 
-  let rec throughPath acpt = function 
+  let rec throughPath ?(cond = None) acpt = function 
     | [] -> (Ok (acpt,(Extlib.the !end_state)))
     | State hd :: tl ->
       
@@ -214,7 +228,7 @@ let cegar_path
       
       if hd.return <> None 
       (* Already treated in the previous state, the call *)
-      then throughPath acpt tl else
+      then throughPath ~cond acpt tl else
 	begin (* hd.return = None *)
       Caret_option.debug ~dkey "Treatment of statement @[%a@] at the state with id %i"  
 	Printer.pp_stmt hd.s_stmt
@@ -252,7 +266,7 @@ let cegar_path
 (*	  not(Stmt.Hashtbl.mem spurious_stmt_hashtbl hd.s_stmt) 
 	||*) (List.length hd.s_stmt.succs) <= 1
       then 
-	throughPath acpt tl
+	throughPath ~cond acpt tl
       else (* Possibly spurious and more than one successor *)
 	let fstStmt blk = match blk.bstmts with
 	    [] -> Cil.dummyStmt
@@ -274,7 +288,11 @@ let cegar_path
 	in
 	
 	let with_alarms = CilE.warn_none_mode in
-	let then_or_else = ref true in
+
+	(* Some true -> then
+	   Some false -> else
+	   None -> Don't know*)
+	let then_or_else = ref None in
         let is_spur = 
 	  match hd.s_stmt.skind with
 	    If(e,b1,_,_) -> 
@@ -289,18 +307,27 @@ let cegar_path
 		then 
 		  let () = Caret_option.debug ~dkey 
 		    "The then part has been taken during the analysis"; 
-		    then_or_else := true
+		    then_or_else := (Some true)
 		  in 
 		  not(Stmt.equal (fstStmt b1) (next.s_stmt))
-		else
+		else if (Ival.is_zero (Cvalue.V.project_ival c_res))
+		then
 		  let () = Caret_option.debug ~dkey 
 		    "The else part has been taken during the analysis";
-		    then_or_else:= false in 
+		    then_or_else:= (Some false) in 
 		  
 		  Stmt.equal (fstStmt b1) (next.s_stmt) 
-	    | _ -> Caret_option.fatal 
+		else
+		  let () = Caret_option.debug ~dkey 
+		    "We can go both paths." ;
+		    then_or_else := None
+		  in
+		  false
+		  
+	  | _ -> Caret_option.fatal 
 	      "No such thing than a statement with multiple successors that is not an \"if\" !"
-	  in
+	in
+	
 	  if is_spur 
 	  then 
 	    if !in_loop = []
@@ -342,11 +369,13 @@ let cegar_path
 		in
 		let () = Caret_option.debug ~dkey 
 		  "c_res = @[%a@]" Db.Value.pretty c_res in
-		  
-	        if not(!then_or_else) then 
-		    (Cvalue.V.contains_non_zero c_res)
-		else
-		  (Cvalue.V.contains_zero c_res)
+		let cont_zero = (Cvalue.V.contains_zero c_res)
+		in
+
+		match !then_or_else with
+		  Some false -> not cont_zero
+		| Some true -> cont_zero
+		| None -> cont_zero && (Cvalue.V.contains_non_zero c_res)
 	      in 
 	      f_until_g f g zip 0
 		
@@ -364,17 +393,20 @@ let cegar_path
 		Stmt.Hashtbl.replace real_system hd.s_stmt zip_out_loop;
 		Caret_option.debug ~dkey 
 		  "Not yet"
-	      in throughPath acpt tl
+	      in 
+	      throughPath ~cond acpt tl
 	      
-	  else throughPath acpt tl
+	  else throughPath ~cond acpt tl
+	    (* todo : propagate the information on getting in an "then" path
+	       or an "else" path*)
 	end (* hd.return = None *)
     | Summary paths :: tl -> 
-      (* TODO : apply cegar path on summay paths *)
+      (* TODO : apply ceana path on summay paths *)
       let acpt = List.fold_left
 	(fun acc (_,a) -> Id_Formula.Set.union a acc)
 	acpt
 	paths in
-      throughPath acpt tl 
+      throughPath ~cond acpt tl 
   in
   throughPath acpt path
 
@@ -520,7 +552,29 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 	    possible_states
 	    
   in
-  
+  let can_be_accepting paths = 
+    let total_acpt = 
+      List.fold_left 
+	(fun acc (loop,_) -> 
+	  List.fold_left 
+	    (fun acc2 -> function
+	    | State s -> Id_Formula.Set.union s.s_accept acc2
+	    | Summary sum_list -> 
+	      List.fold_left 
+		(fun acc3 (_,a) ->  
+		  Id_Formula.Set.union a acc3)
+		acc2
+		sum_list)
+	    acc
+	    loop
+	)
+	Id_Formula.Set.empty
+        paths
+    in
+    Id_Formula.Set.cardinal total_acpt 
+    = Id_Formula.Set.cardinal rsm.until_set
+	
+  in
   RState.Hashtbl.iter
     (fun entry loop_head_tbl ->
       if not(entry.s_mod.is_func.Cil_types.vorig_name = "main") 
@@ -551,6 +605,7 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 		      then (* The path is direct from the entry to the loop *)
 			try 
 			  let s = getAndMove loop_head.s_stmt in
+
 			  (s,path) :: acc 
 			    
 			with
@@ -571,7 +626,26 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 			    
 			    Spurious _ -> 
 			      acc
-			  | Ok (_,s) -> (s,path) :: acc
+			  | Ok (_,s) -> 
+			    let last_state = 
+			      path 
+				  |> List.rev 
+				  |> List.hd 
+				  |> Ext_state.to_state
+			    in
+			    let is_ls_a_ret = 
+			      match last_state.s_stmt.skind with
+				Return _ -> true
+			      | _ -> false
+			    in
+			  if 
+			    (Caret_option.Main_ends.get ())
+			    && is_ls_a_ret 
+			    && (Id_Formula.Set.cardinal (last_state).s_accept
+				= Id_Formula.Set.cardinal rsm.until_set)
+			  then raise (Path_found (path,[]))
+			  else 
+			    (s,path) :: acc
 		    )
 		    []
 		    paths_to_loop_head
@@ -631,30 +705,8 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 		       
 		in
 		
-		let can_be_accepting = 
-		  let total_acpt = 
-		      List.fold_left 
-			(fun acc (loop,_) -> 
-			    List.fold_left 
-			      (fun acc2 -> function
-			      | State s -> Id_Formula.Set.union s.s_accept acc2
-			      | Summary sum_list -> 
-				  List.fold_left 
-				    (fun acc3 (_,a) ->  
-				      Id_Formula.Set.union a acc3)
-				    acc2
-				    sum_list)
-			      acc
-			      loop
-			)
-			Id_Formula.Set.empty
-			loops
-		  in
-		  Id_Formula.Set.cardinal total_acpt 
-		  = Id_Formula.Set.cardinal rsm.until_set
-		      
-		in
-		if not(can_be_accepting)
+
+		if not(can_be_accepting loops)
 		then
 		  ()
 		else
@@ -676,27 +728,7 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 			    Caret_option.feedback
 			      "Ceana not active"
 			  in
-			  let last_state_is_ret = 
-			    match 
-			      (path 
-				  |> List.rev 
-				  |> List.hd 
-				  |> Ext_state.to_state).s_stmt.skind
-			    with
-			      Return _ -> true
-			    | _ -> false
-			  
-			  in
-			  if (Caret_option.Main_ends.get ())
-			  then
-			    if last_state_is_ret
-			    then raise (Path_found (path,[]))
-			    else () 
-			  else 
-			    if not (last_state_is_ret)
-			    then raise (Path_found (path,loops))
-			    else () 
-		      	      
+			  raise (Path_found (path,loops))
 			else
 			  
 			  let () = 

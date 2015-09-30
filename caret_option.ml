@@ -157,7 +157,7 @@ module Spurious = False
       let help = "when on (off by default), prints the list of statement where formulas were found spurious"
     end )
 
-module Ceana = True
+module Ceana = False
     (
     struct
       let option_name = "-ceana"
