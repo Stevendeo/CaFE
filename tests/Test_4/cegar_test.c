@@ -6,7 +6,6 @@ void f(int x){
 
 int main(){
 int x = 0;
-// if (rand()%2) x = 8;
 
 while (x<10){
 	x ++;
@@ -17,5 +16,3 @@ while (x<10){
 return 0;
 
 }
-// AFM2012 Yannick Moy
-// G = ts les points

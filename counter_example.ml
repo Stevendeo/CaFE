@@ -219,7 +219,7 @@ let cegar_path
   let () = Caret_option.debug ~dkey ~level:1
     "Analysing the path %s"
     (Caret_print.string_path (List.map to_state path)) in
-
+  
   let rec throughPath ?(cond = None) acpt = function 
     | [] -> (Ok (acpt,(Extlib.the !end_state)))
     | State hd :: tl ->
@@ -601,6 +601,8 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 			  "Path treated : %s"
 			  (Caret_print.string_path (List.map to_state path))
 		      in
+		      
+		      
 		      if path = [] 
 		      then (* The path is direct from the entry to the loop *)
 			try 
@@ -617,35 +619,53 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 			    in acc
 			| Failure "get_right" -> 
 			  assert false
-		      else
-			
-			if not (Caret_option.Ceana.get ()) then
+		      else (* path <> [] *)
+			let last_state = 
+			  path 
+			|> List.rev 
+			|> List.hd 
+			|> Ext_state.to_state
+			in
+			let is_ls_a_ret = 
+			  match last_state.s_stmt.skind with
+			    Return _ -> true
+			  | _ -> false
+			in
+			if 
+			  ((
+			    (
+			      (Caret_option.Main_ends.get ()) 
+			      && (not is_ls_a_ret)
+			    )
+			   )
+			   || 
+			     (
+			       (not (Caret_option.Main_ends.get ()) 
+				&& is_ls_a_ret)
+			     ))
+			    
+			then (* path is not correct *)
+			  acc
+			else if not (Caret_option.Ceana.get ()) 
+			then (* No ceana *)
 			  (getAndMove loop_head.s_stmt,path)::acc
-			else 
+			else (* Ceana *)
+			  
 			  match cegar_path path with
 			    
 			    Spurious _ -> 
 			      acc
 			  | Ok (_,s) -> 
-			    let last_state = 
-			      path 
-				  |> List.rev 
-				  |> List.hd 
-				  |> Ext_state.to_state
-			    in
-			    let is_ls_a_ret = 
-			      match last_state.s_stmt.skind with
-				Return _ -> true
-			      | _ -> false
-			    in
-			  if 
-			    (Caret_option.Main_ends.get ())
-			    && is_ls_a_ret 
-			    && (Id_Formula.Set.cardinal (last_state).s_accept
-				= Id_Formula.Set.cardinal rsm.until_set)
-			  then raise (Path_found (path,[]))
-			  else 
-			    (s,path) :: acc
+
+			      if 
+				(Caret_option.Main_ends.get ())
+				&& is_ls_a_ret 
+				&& (Id_Formula.Set.cardinal 
+				      (last_state).s_accept
+				    = Id_Formula.Set.cardinal rsm.until_set)
+			      then raise (Path_found (path,[]))
+			      else 
+				(s,path) :: acc
 		    )
 		    []
 		    paths_to_loop_head
