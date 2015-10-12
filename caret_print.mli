@@ -26,7 +26,7 @@ val string_state_config : state -> string
 val string_box : box -> string
 
 (** Prints the rsm in argument (dot standard)  *)
-val string_rsm : rsm -> string
+val string_rsm : ?cex:Rsmast.RState.Set.t -> rsm -> string
 
 (** Prints minimal informations about the automaton in argument.  *)
 val string_rsm_infos : rsm -> string

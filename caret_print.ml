@@ -151,9 +151,17 @@ let string_box box =
     box.b_exits
     ""
 
-let string_state rsm ?(boxes = ref Box.Set.empty) state = 
+let string_state rsm ?(cex = RState.Set.empty) ?(boxes = ref Box.Set.empty) state = 
 (* Replace "short_state" by "simple_state" for a complete graph but be
    careful, you also need to change the name used for the transitions ! *)
+
+  let color = 
+    if RState.Set.mem state cex
+    then ", color=red"
+    else ""
+  in
+
+
   let id = string_of_int state.s_id in
   match state.call with
     Some (box, _) -> 
@@ -188,12 +196,12 @@ let string_state rsm ?(boxes = ref Box.Set.empty) state =
 	then "tripleoctagon"
 	else "doubleoctagon" in
       id ^  
-	"[label = \"" ^ (short_state state)  ^  "\",shape = " ^ shape ^" ];\n"
+	"[label = \"" ^ (short_state state)  ^  "\",shape = " ^ shape ^ color ^" ];\n"
 
-let string_state_set rsm s_set = 
+let string_state_set rsm ?(cex = RState.Set.empty) s_set = 
   
   RState.Set.fold
-    (fun st acc -> acc ^ (string_state rsm  st) )
+    (fun st acc -> acc ^ (string_state rsm ~cex st) )
     s_set
     ""
 
@@ -276,10 +284,10 @@ let string_rank r_mod =
   in
   split_states r_mod.states
   
-let string_module rsm r_mod = 
+let string_module rsm ?(cex = RState.Set.empty ) r_mod = 
  "subgraph clustermod_" ^ (string_of_int r_mod.mid) 
   ^ "{\nlabel = \"" ^  r_mod.mod_name ^ "\";\n" ^ 
-  (string_state_set rsm
+  (string_state_set rsm ~cex
      (RState.Set.filter (fun s -> s.s_id > 0) r_mod.states) )
   ^ "\n\n"
   ^ (string_tr_set_of_mod r_mod) ^ "\n"
@@ -288,10 +296,10 @@ let string_module rsm r_mod =
   
   
     
-let string_rsm rsm = 
+let string_rsm ?(cex = RState.Set.empty ) rsm = 
   "digraph " ^ rsm.name  ^ " {\nsplines=ortho\n"  
   ^ (Rsm_module.Set.fold
-       (fun r_mod acc -> (string_module rsm r_mod) ^ acc)
+       (fun r_mod acc -> (string_module rsm ~cex r_mod) ^ acc)
        rsm.rsm_mod)
        ""
   ^ "}\n"

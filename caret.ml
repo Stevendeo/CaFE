@@ -62,12 +62,15 @@ let treatment file formula closure atoms =
     Caret_visitor.compute_rsm file formula closure atoms 
   in
   (** Different actions *)
-  
+  let cex = ref RState.Set.empty 
+    (* The place where the counterexample is saved, if there is one *)
+  in
   (** Loop analysis  *)
   begin (* Acceptance *)
+    
     if Create_res.get ()
     then
-
+      
 	let chan_res = 
 	  if Output_res.is_default ()
 	  then stdout 
@@ -84,6 +87,20 @@ let treatment file formula closure atoms =
 	  output_fun chan_res "Your program satisfies the formula\n"
 	else
 	  let (path,loops) = Extlib.the path_opt in
+	  let () = 
+	    cex := 
+	      RState.Set.of_list 
+	      (List.map Ext_state.to_state path);
+	    List.iter
+	      (fun (path,_) -> 
+	        cex := 
+		  RState.Set.union 
+		  !cex 
+		  (RState.Set.of_list (List.map Ext_state.to_state path))
+	      )
+	      loops
+	  in
+	  
 	  begin (* Not accepted  *)
 	    let string_call state = 
 	      	try 
@@ -215,7 +232,7 @@ let treatment file formula closure atoms =
 		Caret_option.feedback
 		  "Dot printing" ;
 		
-		Caret_print.string_rsm rgba 
+		Caret_print.string_rsm rgba ~cex:!cex
 	      end
 	    else
 	      Caret_print.string_rsm_infos rgba ;
