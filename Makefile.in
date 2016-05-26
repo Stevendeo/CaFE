@@ -1,8 +1,9 @@
-FRAMAC_SHARE 	?=$(shell frama-c.byte -print-path)
-FRAMAC_LIBDIR 	?=$(shell frama-c.byte -print-libpath)
+FRAMAC_SHARE 	:= $(shell frama-c.byte -print-path)
+FRAMAC_LIBDIR 	:= $(shell frama-c.byte -print-libpath)
+
 
 PLUGIN_DIR ?=.
-PLUGIN_NAME 	= CaRet
+PLUGIN_NAME 	= CaFE
 
 PLUGIN_GENERATED := $(addprefix ${PLUGIN_DIR}/, \
 		formula_parser.ml formula_parser.mli)

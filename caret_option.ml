@@ -1,7 +1,7 @@
 include Plugin.Register
   (struct
-    let name ="model_caret"
-    let shortname = "caret"
+    let name ="CAret Frama-c's extension"
+    let shortname = "cafe"
     let help = "model checking with CaRet formulas"
    end)
 
