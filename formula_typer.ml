@@ -24,7 +24,8 @@ module Typer =
 		  str 
 		  (VLocal (Globals.Functions.find_by_name "main"))
 	      with
-		Not_found -> raise (Unbound ("Unbound variable " ^ str))
+		Not_found -> 
+		  Caret_option.abort "Unbound variable %s" str
 	in
 	cvar_to_lvar good_var
 	  
@@ -33,7 +34,8 @@ module Typer =
 	try
 	  Globals.Types.find_enum_tag str
 	with Not_found ->
-          raise (Unbound ("Unbound variable " ^ str))
+          Caret_option.abort "Unbound variable %s" str
+
       let find_type = Globals.Types.find_type
 	
       let find_comp_field info s = 

@@ -1,19 +1,19 @@
 include Plugin.Register
   (struct
-    let name ="CAret Frama-c's extension"
+    let name ="CaRet for Frama-C"
     let shortname = "cafe"
     let help = "model checking with CaRet formulas"
    end)
 
 module Enabled = False
   (struct 
-    let option_name = "-caret"
+    let option_name = "-cafe"
     let help = "when on (off by default), model checking with CaRet formulas" 
    end)
 
 module Formula_file = String
   (struct
-    let option_name = "-caret-formula"
+    let option_name = "-cafe-formula"
     let arg_name = "caret-formula"
     let default = ""
     let help = 
@@ -22,19 +22,19 @@ module Formula_file = String
 
 module Auto_gen = True
     (struct 
-    let option_name = "-caret-auto"
+    let option_name = "-cafe-auto"
     let help = "when on (on by default), generates the automaton. Desactivate only for debug"
    end)
 
 module Create_res = True
   (struct 
-    let option_name = "-caret-work"
+    let option_name = "-cafe-work"
     let help = "when on (on by default), tells you if your program doesn't satisfy your CaRet property. Desactivate only for debug"
    end)
 
 module Output_res = String
   (struct 
-    let option_name = "-caret-output"
+    let option_name = "-cafe-output"
     let default = ""
     let arg_name = "output-file"
     let help = 
@@ -43,7 +43,7 @@ module Output_res = String
 
 module Simplify = Int
   (struct 
-    let option_name = "-caret-simp-level"
+    let option_name = "-cafe-simp-level"
     let default = 2
     let arg_name = "n"
     let help = 
@@ -63,7 +63,7 @@ module Ignore_fun = String
 
 module Output_dot = String
   (struct 
-    let option_name = "-caret-dot-output"
+    let option_name = "-cafe-dot-output"
     let default = ""
     let arg_name = "output-file"
     let help = 
@@ -72,13 +72,13 @@ module Output_dot = String
 
 module Dot = False
   (struct
-    let option_name = "-caret-dot"
+    let option_name = "-cafe-dot"
     let help = "when on (off by default), generates the dot representation of the automaton. When off, generates some informations about the automaton."
    end)
 
 module Output_closure = String
   (struct 
-    let option_name = "-caret-closure-output"
+    let option_name = "-cafe-closure-output"
     let default = ""
     let arg_name = "output-file"
     let help = 
@@ -95,7 +95,7 @@ module Closure = False
 
 module Output_atoms = String
   (struct 
-    let option_name = "-caret-atoms-output"
+    let option_name = "-cafe-atoms-output"
     let default = ""
     let arg_name = "output-file"
     let help = 
@@ -104,14 +104,14 @@ module Output_atoms = String
   
 module Atoms = False
   (struct
-    let option_name = "-caret-atoms"
+    let option_name = "-cafe-atoms"
     let help = "generates a file containing the atoms of the formula"
    end)
 
 
 module Complete_states = String
   (struct 
-    let option_name = "-caret-states"
+    let option_name = "-cafe-states"
     let default = ""
     let arg_name = "output-file"
     let help = "in this file will be found every information about each state"
@@ -119,19 +119,19 @@ module Complete_states = String
 
 module All_paths = False
   (struct
-    let option_name = "-caret-all"
+    let option_name = "-cafe-all"
     let help = "when on (off by default) generates all paths that doesnt satisfy the formula. When off, just one. "
    end)
 
 module Only_main = True
     (struct
-    let option_name = "-caret-main"
+    let option_name = "-cafe-main"
     let help = "when on (on by default), only checks the first loop encourntered in the main.c file. Infinite paths on other functions are not considered."
    end)
 
 module Main_ends = True
     (struct
-    let option_name = "-caret-end"
+    let option_name = "-cafe-end"
     let help = "when on (on by default), considers the c program ends eventually in any case."
    end)
 

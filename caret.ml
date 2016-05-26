@@ -58,7 +58,7 @@ let treatment file formula closure atoms =
     (fun acc f -> acc ^ "\n" ^ f) 
     "" 
     (Str.split (Str.regexp ";") (Caret_option.Ignore_fun.get ())));
-  let rgba = 
+  let rsm = 
     Caret_visitor.compute_rsm file formula closure atoms 
   in
   (** Different actions *)
@@ -70,101 +70,142 @@ let treatment file formula closure atoms =
     
     if Create_res.get ()
     then
-      
-	let chan_res = 
-	  if Output_res.is_default ()
-	  then stdout 
-	  else open_out (Output_res.get ())
-	in
-	Caret_option.feedback "Testing acceptance";
+       
+      let () = Rsm.exitReachability rsm;
 
-	let path_opt = Rsm.testAcceptance rgba 
+	(* Comment this part to avoid bad things to happen *)
+	Rsm_module.Set.iter 
+	  (fun rmod ->
+	    RState.Set.iter 
+	      (fun state -> 
+		state.s_preds <- 
+		  RState.Set.union state.s_preds state.summary_preds; 
+		
+		let succs_as_set = 
+		  RState.Map.fold
+		    (fun ret _ acc -> RState.Set.add ret acc)
+		    state.summary_succs
+		    state.s_succs
+		in
+		
+		state.s_succs <- 
+		  succs_as_set
+	      ) 
+	      rmod.states
+	  ) 
+	  rsm.rsm_mod
+      in
+      let () = 
+	
+	if Caret_option.Simplify.get () <> 0
+	then 
+	  begin
+	    Caret_option.debug ~level:0 "Starting the simplification";
+	  (*Rsm.simplifyAutomaton rsm;
+	  *)
+	  end
+  
+  (* We create the accepting states of the automaton.  
+     Doing these tests during the state creation is possible,
+     but then tests are done before the simplification, which
+     makes some of them useless. *)
+      in
+
+
+      let chan_res = 
+	if Output_res.is_default ()
+	then stdout 
+	else open_out (Output_res.get ())
+      in
+      Caret_option.feedback "Testing acceptance";
+      
+      let path_opt = Rsm.testAcceptance rsm 
+      in
+      
+      Caret_option.feedback "Acceptance tested";
+      if path_opt = None
+      then
+	output_fun chan_res "Your program satisfies the formula\n"
+      else
+	let (path,loops) = Extlib.the path_opt in
+	let () = 
+	  cex := 
+	    RState.Set.of_list 
+	    (List.map Ext_state.to_state path);
+	  List.iter
+	    (fun (path,_) -> 
+	      cex := 
+		RState.Set.union 
+		!cex 
+		(RState.Set.of_list (List.map Ext_state.to_state path))
+	    )
+	    loops
 	in
 	
-	Caret_option.feedback "Acceptance tested";
-	if path_opt = None
-	then
-	  output_fun chan_res "Your program satisfies the formula\n"
-	else
-	  let (path,loops) = Extlib.the path_opt in
-	  let () = 
-	    cex := 
-	      RState.Set.of_list 
-	      (List.map Ext_state.to_state path);
-	    List.iter
-	      (fun (path,_) -> 
-	        cex := 
-		  RState.Set.union 
-		  !cex 
-		  (RState.Set.of_list (List.map Ext_state.to_state path))
-	      )
-	      loops
+	begin (* Not accepted  *)
+	  let string_call state = 
+	    try 
+	      (Rsm.getCalledFunc state).Cil_types.vname
+	    with
+	      Not_found -> 
+		match Atoms_utils.getAtomKind state.s_atom with
+		  ICall (Some f) -> f
+		| _ -> state.s_name
+		  
 	  in
-	  
-	  begin (* Not accepted  *)
-	    let string_call state = 
-	      	try 
-		  (Rsm.getCalledFunc state).Cil_types.vname
-		with
-		  Not_found -> 
-		    match Atoms_utils.getAtomKind state.s_atom with
-		      ICall (Some f) -> f
-		    | _ -> state.s_name
-		      
-	    in
-	    let string_path path start_loop = 
-	      let _,res = 
-		List.fold_left 
-		  (fun (cpt,acc) st ->
-		    if st.s_id = start_loop.s_id
-		    then cpt+1,acc^"\nLOOP n°"^ (string_of_int cpt)
-		      
-		      ^"\n-->" 
-		      ^ (if Call_print.get () 
-			then "" else (Caret_print.simple_state st))^ "\n"
-		      ^ Caret_print.string_state_config st^ "\n"
-		    else
-		      
-		      if Call_print.get () 
-		      then
-			if  Atoms_utils.isACall st.s_atom
-			then
-			  (cpt, 
-			   acc ^ "\nCall - " ^ 
-			     (string_call st))
-			    
-			else (cpt,acc)
-		      else
-			let accepting_state =
-			  if 
-			    st.s_accept <> Formula_datatype.Id_Formula.Set.empty
-			  then 
-			    "\nAccepts :\n" 
-			    ^ Caret_print.string_raw_atom st.s_accept
-			  else ""
-			in
-			cpt,acc 
-			  ^ "\n--" 
-			  ^ Caret_print.simple_state st  ^ "\n"
-			  ^ Caret_print.string_state_config st ^ "\n"
-			  ^ accepting_state
-			    
-		  )
-		  (1,"\n")
-		  path
-	      in res
-	    in
-	    output_fun 
-	      chan_res
-	      "A path has been found that doesn't satisfies the formula !\n";
-	    
-	    List.iter
-	      (fun state -> 
-		if Call_print.get () 
-		then 
-		  if Atoms_utils.isACall state.s_atom
-		  then
+	  let string_path path start_loop = 
+	    let _,res = 
+	      List.fold_left 
+		(fun (cpt,acc) st ->
+		  if st.s_id = start_loop.s_id
+		  then cpt+1,acc^"\nLOOP n°"^ (string_of_int cpt)
 		    
+		    ^"\n-->" 
+		    ^ (if Call_print.get () 
+		      then "" else (Caret_print.simple_state st))^ "\n"
+		    ^ Caret_print.string_state_config st^ "\n"
+		  else
+		    
+		    if Call_print.get () 
+		    then
+		      if  Atoms_utils.isACall st.s_atom
+		      then
+			(cpt, 
+			 acc ^ "\nCall - " ^ 
+			   (string_call st))
+			  
+		      else (cpt,acc)
+		    else
+		      let accepting_state =
+			if 
+			  st.s_accept <> Formula_datatype.Id_Formula.Set.empty
+			then 
+			  "\nAccepts :\n" 
+			  ^ Caret_print.string_raw_atom st.s_accept
+			else ""
+		      in
+		      cpt,acc 
+			^ "\n--" 
+			^ Caret_print.simple_state st  ^ "\n"
+			^ Caret_print.string_state_config st ^ "\n"
+			^ accepting_state
+			  
+		)
+		(1,"\n")
+		path
+	    in res
+	  in
+	  output_fun 
+	    chan_res
+	    "A path has been found that doesn't satisfies the formula !\n";
+	  
+	  List.iter
+	    (fun state -> 
+	      if Call_print.get () 
+	      then 
+		if Atoms_utils.isACall state.s_atom
+		then
+		  
 		    output_fun 
 		      chan_res
 		      ("\nCall - " ^ 
@@ -224,7 +265,7 @@ let treatment file formula closure atoms =
 
 	  in
 	  
-	  let rgba_str = 
+	  let rsm_str = 
 	    
 	    if Dot.get () 
 	    then 
@@ -232,14 +273,14 @@ let treatment file formula closure atoms =
 		Caret_option.feedback
 		  "Dot printing" ;
 		
-		Caret_print.string_rsm rgba ~cex:!cex
+		Caret_print.string_rsm rsm ~cex:!cex
 	      end
 	    else
-	      Caret_print.string_rsm_infos rgba ;
+	      Caret_print.string_rsm_infos rsm ;
 	    
 	  in
 
-	  output_fun chan_dot rgba_str;
+	  output_fun chan_dot rsm_str;
 	  close_out chan_dot
 	    
 	end
@@ -292,7 +333,7 @@ let treatment file formula closure atoms =
 			   ""
 		       ) ^ str 
 		   )
-		   rgba.rsm_mod
+		   rsm.rsm_mod
 		   "\n");
 	      close_out chan_st
 	    end

@@ -1791,54 +1791,12 @@ let compute_rsm file formula closure atoms =
     rsm.until_set <- Rsm.generateBuchi closure rsm in
   Rsm.addBuchiToRStates rsm ;
 
-  (*Rsm.simplifyAutomaton rsm;
-*)
-  
-
 (*  let path_found =
     try 
       unfoldAutomaton rsm; None
     with
       Path_found e -> Some e*)
-  let () = exitReachability rsm;
 
-  (* Comment this part to avoid bad things to happen *)
-  Rsm_module.Set.iter 
-    (fun rmod ->
-	RState.Set.iter 
-	  (fun state -> 
-	    state.s_preds <- 
-	      RState.Set.union state.s_preds state.summary_preds; 
-	    
-	    let succs_as_set = 
-	      RState.Map.fold
-		(fun ret _ acc -> RState.Set.add ret acc)
-		state.summary_succs
-		state.s_succs
-	    in
-	    
-	    state.s_succs <- 
-	      succs_as_set
-	  ) 
-	  rmod.states
-    ) 
-    rsm.rsm_mod
-  in
-  let () = 
-
-  if Caret_option.Simplify.get () <> 0
-  then 
-    begin
-      Caret_option.debug ~level:0 "Starting the simplification";
-      (*Rsm.simplifyAutomaton rsm;
-      *)
-    end
-  
-  (* We create the accepting states of the automaton.  
-     Doing these tests during the state creation is possible,
-     but then tests are done before the simplification, which
-     makes some of them useless. *)
-  in
     
 
   rsm
