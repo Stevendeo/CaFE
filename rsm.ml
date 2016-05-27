@@ -24,7 +24,7 @@ let new_bid = Bid.next
 let new_rid = Rid.next
 
 let dkey = Caret_option.register_category "rsm:utils" 
-let dkey_loop = Caret_option.register_category "rsm:loop" 
+(*let dkey_loop = Caret_option.register_category "rsm:loop" *)
 let dkey_exit = Caret_option.register_category "rsm:exit"
 let dkey_accept = Caret_option.register_category "rsm:accept"
 
@@ -247,8 +247,13 @@ let isStart state =
 
 let isDeleted state = state.s_id < 0
 
+let isAccepting rsm state = 
+  (Id_Formula.Set.cardinal rsm.until_set) = Id_Formula.Set.cardinal state.s_accept
+
+let isFinal state = 
+  RState.Set.mem state state.s_succs
+
 let deleteRState state = (* todo : delete in boxes or change id to -1 *)
-  assert ((Caret_option.Simplify.get ()) <> 0);
   if isDeleted state then () else 
     let () = 
       let rmod = state.s_mod
@@ -345,6 +350,7 @@ let addExits s_list r_mod =
     (fun state -> addExit state r_mod)
     s_list
 
+
 let throughBox state box = 
   
   try 
@@ -353,8 +359,21 @@ let throughBox state box =
     else 
       if isExit state
       then RState.Map.find state box.b_exits
-      else assert false
-  with Not_found -> RState.Set.empty
+      else failwith "through_box"
+  with 
+    Not_found -> RState.Set.empty
+  | Failure "through_box" -> raise Not_found
+
+let getSuccs (state:RState.t) box = 
+  match state.call with
+    Some (call_b,_) -> throughBox state call_b
+  | None -> 
+    match box with 
+      None -> state.s_succs
+    | Some b -> 
+      if RState.Set.is_empty state.s_succs
+      then try throughBox state b with Not_found -> RState.Set.empty
+      else state.s_succs
 
 (** Transitions management *)
 
@@ -397,7 +416,7 @@ let copyRState s =
 
 let copy_mod m = m
 
-let copy_rsm rsm =  
+(*let copy_rsm rsm =  
   let id = new_rid () in
   {
 
@@ -417,9 +436,8 @@ let copy_rsm rsm =
     until_set = rsm.until_set;
     rsm_id = id
 
-  
   }
-
+*)
 
 let addMod r_mod rsm = rsm.rsm_mod <- Rsm_module.Set.add r_mod rsm.rsm_mod
 
@@ -551,7 +569,7 @@ let addBuchiToRStates rsm =
 (** Makes a dfs over the automaton. If an exception is raised in pre or post, 
     when pedantic is set to [true], Dfs_stopped will be raised. *)
 
-let dfs ?(pre = ignore) ?(post = ignore) start = 
+let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start = 
   Caret_option.debug ~dkey "Dfs for %s" (simple_state start);
   let visited_config = ref Config.Set.empty in
   (* Todo : in case of multiple starts, doesn't work *)
@@ -563,6 +581,8 @@ let dfs ?(pre = ignore) ?(post = ignore) start =
     let config =  
       state, box_list
     in
+    let current_box = try Some (List.hd box_list) with _ -> None in
+    
     if Config.Set.mem config !visited_config
     then 
       Caret_option.debug
@@ -576,7 +596,7 @@ let dfs ?(pre = ignore) ?(post = ignore) start =
 	"Config %s never visited"
 	(Config.varname config)
       in
-      let () = pre state
+      let () = pre state current_box
       in
       let () =
 	visited_config := Config.Set.add config !visited_config in 
@@ -626,13 +646,13 @@ let dfs ?(pre = ignore) ?(post = ignore) start =
 	  end;
       
       
-      post state
+      post state current_box
   in
   dfsRun [] start
-    
+   
 let simplifyAutomaton rsm = 
   
-  Caret_option.debug ~level:1 ~dkey "Starting the simplification";
+  Caret_option.debug ~dkey "Starting the simplification";
   (* A state is not accessible if no transitions goes to it and is not callable
      (ie is not the beginning of a module). *)
   
@@ -642,7 +662,7 @@ let simplifyAutomaton rsm =
 
   let useless_states = ref RState.Set.empty in
 
-  let pre state = 
+  let pre state _ = 
     if not(RState.Set.mem state !state_accessible)
     then
       begin
@@ -661,30 +681,42 @@ let simplifyAutomaton rsm =
     
   in
   
-  let post state =
-    if Caret_option.Simplify.get() <= 1
-    then () 
-    else
-      if not (isExit state) 
-      	&& (isCall state) 
-	&& 
-	  (RState.Set.for_all 
-	     (fun succ -> RState.Set.mem succ !useless_states) 
-	     state.s_succs
-	  )
-	&& 
-	  (not(isMainMod state.s_mod) || 
-	      ((List.length state.s_stmt.Cil_types.succs) = 0))
-      then 
-	let () = 
-	  Caret_option.debug 
-	    ~dkey 
-	    "%s is useless"
-	    (simple_state state)in
-	useless_states := RState.Set.add state !useless_states
+  let post state box =
+    let succs = getSuccs state box
+    in
+    let is_final_non_accept = (isFinal state) && (not (isAccepting rsm state)) and
+	is_dead_end = 
+      (RState.Set.for_all 
+	 (fun succ -> RState.Set.mem succ !useless_states) 
+	 succs)  && not(isCall state)
+    in
+    if is_final_non_accept || is_dead_end
+    then 
+      let () = 
+	Caret_option.debug 
+	  ~dkey 
+	  "%s is useless because of 1 : %b 2 %b"
+	  (simple_state state) is_final_non_accept is_dead_end;
+	
+	RState.Set.iter
+	  (fun state ->  
+	    Caret_option.debug ~dkey ~level:2 "%s\n" (simple_state state)) succs
 	  
-      else ()
-      
+      in
+      useless_states := RState.Set.add state !useless_states
+	
+    else 
+      let () = 
+	Caret_option.debug 
+	  ~dkey 
+	  "%s is not useless because of 1 : %b 2 %b"
+	  (simple_state state) is_final_non_accept is_dead_end
+	  in
+	RState.Set.iter
+	  (fun state ->  
+	    Caret_option.debug ~dkey ~level:2 "%s\n" (simple_state state)) succs
+	  
+	  
   in
   let () =
     RState.Set.iter (dfs ~pre ~post) rsm.start ;  
@@ -711,11 +743,10 @@ let simplifyAutomaton rsm =
    the path taken during the call
 *)
   
-  (* state -> exit -> paths from state to exit *)
+(* state -> exit -> paths from state to exit *)
   
 (* State in Loop -> Loop Head of Loop -> Paths from State to Loop Head *)
 let loop_memoizer = RState.Hashtbl.create 42
-  
   
 (* State before Loop -> Loop Head of Loop -> Paths from State to Loop Head *)
 let path_to_loop_memoizer = RState.Hashtbl.create 42
@@ -728,8 +759,6 @@ let exitReachability rsm =
   let () = Caret_option.feedback "Exit reachability" in
   let treated_mod = ref Rsm_module.Set.empty
   in
-
-
 
   let rec update_table form_acc tbl zip_path exit_state = 
     try 

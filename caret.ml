@@ -65,6 +65,19 @@ let treatment file formula closure atoms =
   let cex = ref RState.Set.empty 
     (* The place where the counterexample is saved, if there is one *)
   in
+
+  let () = 
+    
+    if Caret_option.Simplify.get () <> 0
+    then 
+      begin
+	Caret_option.debug ~level:0 "Starting the simplification";
+	Rsm.simplifyAutomaton rsm;
+	
+      end 
+  in
+
+
   (** Loop analysis  *)
   begin (* Acceptance *)
     
@@ -94,16 +107,7 @@ let treatment file formula closure atoms =
 	      rmod.states
 	  ) 
 	  rsm.rsm_mod
-      in
-      let () = 
-	
-	if Caret_option.Simplify.get () <> 0
-	then 
-	  begin
-	    Caret_option.debug ~level:0 "Starting the simplification";
-	  (*Rsm.simplifyAutomaton rsm;
-	  *)
-	  end
+      
   
   (* We create the accepting states of the automaton.  
      Doing these tests during the state creation is possible,
