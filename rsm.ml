@@ -600,7 +600,7 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
       in
       let () =
 	visited_config := Config.Set.add config !visited_config in 
-      if state.call <> None
+      if isCall state
       then
 	begin
 	  Caret_option.debug ~dkey "This is a call : ";
@@ -753,8 +753,7 @@ let path_to_loop_memoizer = RState.Hashtbl.create 42
    
 (* Entry -> Exit -> Paths from Entry to Exit *)
 let entry_exit_hashtbl = RState.Hashtbl.create 42
-   
-
+ 
 let exitReachability rsm = 
   let () = Caret_option.feedback "Exit reachability" in
   let treated_mod = ref Rsm_module.Set.empty

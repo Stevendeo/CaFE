@@ -1,4 +1,4 @@
-int x = 0;
+int x = -2;
 void f(void) { 
 	x ++;
 	x --; 
@@ -19,3 +19,4 @@ int main() {
   }
   return 0;
 }
+/* Gnuprolog */
