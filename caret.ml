@@ -17,18 +17,12 @@ let treatment file formula closure atoms =
   
   (** Value computation *)
   let () = 
-    (*Cfg.prepareCFG ();*)
-    Db.Value.Compute_Statement_Callbacks.extend 
-      Counter_example.registerValuesLoop;
-
-    (*if Db.Value.is_computed ()
-    then Caret_option.feedback "Value already done"
-    else*)
-      let () = 
-	Caret_option.feedback "Value computation";
-	
+    
+    let () = 
+      Caret_option.feedback "Value computation";
+      
 	(*Dynamic.Parameter.Int.set "-slevel" 10*)  in
-      !Db.Value.compute ()
+    !Db.Value.compute ()
   in
   let () = (* Checking if the main function ends or not *)
     let actually_ends = 
@@ -127,12 +121,14 @@ let treatment file formula closure atoms =
       in
       
       Caret_option.feedback "Acceptance tested";
-      if path_opt = None
+      if path_opt = []
       then
 	output_fun chan_res "Your program satisfies the formula\n"
       else
-	let (path,loops) = Extlib.the path_opt in
+	let (path,loops) = (List.hd path_opt) in
+	let path =  fst (List.hd path) in
 	let () = 
+	  
 	  cex := 
 	    RState.Set.of_list 
 	    (List.map Ext_state.to_state path);
@@ -341,13 +337,7 @@ let treatment file formula closure atoms =
 		   "\n");
 	      close_out chan_st
 	    end
-    end; (* RState infos *)
-  begin (* Value analysis results *)
-    if Caret_option.Print_Cegar.get () 
-    then
-      Counter_example.printValueResults ()
-	    
-  end (* Value analysis results *)
+    end (* RState infos *)
     
 let work () = 
     (** Lexing & Parsing of the formula *)

@@ -34,7 +34,6 @@ module Call_print: Parameter_sig.Bool
 module Spurious: Parameter_sig.Bool
 
 module Ceana: Parameter_sig.Bool
-module Print_Cegar: Parameter_sig.Bool
 
 module Print_memo: Parameter_sig.Bool
 

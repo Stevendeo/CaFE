@@ -1358,7 +1358,6 @@ let print_memoizers () =
 
 let testAcceptance rsm = 
   try 
-    analyse_paths rsm path_to_loop_memoizer loop_memoizer;
-    None
+    search_paths rsm path_to_loop_memoizer loop_memoizer;
   with
-    Path_found (p,q) -> Some (p,q)
+    Path_found p -> [p]

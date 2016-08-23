@@ -138,10 +138,6 @@ val unfoldAutomaton : rsm -> unit
 *)
 
 val testAcceptance :
-  Rsmast.rsm ->
-  (Rsmast.Ext_state.t list *
-     (Rsmast.Ext_state.t list * Formula_datatype.Id_Formula.Set.t)
-            list)
-    option
+  Rsmast.rsm -> Counter_example.counter_example list
 
 val print_memoizers : unit -> unit

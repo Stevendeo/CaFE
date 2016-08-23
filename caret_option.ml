@@ -164,13 +164,6 @@ module Ceana = False
       let help = "when on (on by default), applies a counter example analysis"
     end )
 
-module Print_Cegar = False
-    (
-    struct
-      let option_name = "-cegar-print"
-      let help = "when on (off by default), prints the content of the registered Value states in the counter example analysis hook."
-    end )
-
 module Print_memo = False
       (
     struct
