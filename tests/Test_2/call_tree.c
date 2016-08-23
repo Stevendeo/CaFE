@@ -18,8 +18,8 @@ int g(int s) {
 
 int main() {
   int x = 0;
-  while(1){
-    if(!x) x = f(x);
+  while(!x){
+    if(x) x = f(x);
     x = g(x);
   } 
  return 0;

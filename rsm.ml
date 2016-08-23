@@ -27,6 +27,7 @@ let dkey = Caret_option.register_category "rsm:utils"
 (*let dkey_loop = Caret_option.register_category "rsm:loop" *)
 let dkey_exit = Caret_option.register_category "rsm:exit"
 let dkey_accept = Caret_option.register_category "rsm:accept"
+let dkey_delete = Caret_option.register_category "rsm:delete"
 
 (* Imported functions from Caret_print *)
 let string_stmt stmt =
@@ -254,6 +255,10 @@ let isFinal state =
   RState.Set.mem state state.s_succs
 
 let deleteRState state = (* todo : delete in boxes or change id to -1 *)
+  let () = 
+    Caret_option.debug ~dkey:dkey_delete ~level:3
+      "Deleting state %s"
+      (simple_state state) in
   if isDeleted state then () else 
     let () = 
       let rmod = state.s_mod
@@ -753,7 +758,8 @@ let path_to_loop_memoizer = RState.Hashtbl.create 42
    
 (* Entry -> Exit -> Paths from Entry to Exit *)
 let entry_exit_hashtbl = RState.Hashtbl.create 42
- 
+
+
 let exitReachability rsm = 
   let () = Caret_option.feedback "Exit reachability" in
   let treated_mod = ref Rsm_module.Set.empty
@@ -867,7 +873,7 @@ let exitReachability rsm =
       rets
   in
   
-  let rec deleteUselessBranch state =
+  (*let rec deleteUselessBranch state =
     (*if Caret_option.Simplify.get () = 2
       then*)
     if 
@@ -889,7 +895,7 @@ let exitReachability rsm =
       RState.Set.iter
 	deleteUselessBranch
 	preds
-  in
+  in*)
   
   (*let forbidden_states = ref RState.Set.empty
   in
@@ -989,7 +995,7 @@ let exitReachability rsm =
   let memoized_as_reachable_exit visited_states state = 
     assert( RState.Hashtbl.mem entry_exit_hashtbl state);
     
-	    (* We update the entry_exit memoizer *)
+    (* We update the entry_exit memoizer *)
     let exit_hashtbl = 
       RState.Hashtbl.find 
 	entry_exit_hashtbl state
@@ -1141,7 +1147,11 @@ let exitReachability rsm =
 	      in
 	      
 	      if RState.Map.is_empty succs
-	      then deleteUselessBranch start
+	      then 
+		Caret_option.debug ~dkey:dkey_exit
+		    "Call state %i has no abstract successor" start.s_id
+		(*
+		deleteUselessBranch start*)
 	      else
 		let () = createSummarySuccs start succs;
 		Caret_option.debug ~dkey:dkey_exit 
@@ -1168,7 +1178,7 @@ let exitReachability rsm =
 		  entry_exit_hashtbl
 		  (Zipper.of_list (extend_start::visited_states)) 
 		  start
-	      else
+	      else (* This is not a call nor a box exit *)
 		if 
 		  RState.Set.is_empty start.s_succs
 		  && 
@@ -1180,7 +1190,10 @@ let exitReachability rsm =
 			 Cil_types.Return _ -> false
 		       | _ -> true)
 		    
-		then deleteUselessBranch start
+		then 
+		    Caret_option.debug ~dkey:dkey_exit 
+		      "State %i has no successor" start.s_id 
+		  (*deleteUselessBranch start*)
 		else
 		  begin 
 		    if start.call = None then
@@ -1188,7 +1201,7 @@ let exitReachability rsm =
 		      (fun s -> dfs (extend_start::visited_states) s)
 		      start.s_succs
 		    
-		    else
+		    else (* Summary successors have been computed *)
 
 	            RState.Map.iter 
 		      (fun key_return path_list -> 
@@ -1209,7 +1222,6 @@ let exitReachability rsm =
     match state.call with
       None -> assert false
     | Some (box, entries) -> 
-      (* We will check in entry_exit_hashtbl the summary successor of  *)
       let () =  
 	if 
 	  not (Rsm_module.Set.mem box.r_mod_repres !treated_mod)
