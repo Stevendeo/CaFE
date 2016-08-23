@@ -145,6 +145,9 @@ and RState_Make_Input:(Datatype.Make_input with type t = Type_RState.t) =
     let varname (x:t) =
       "state_" ^ (string_of_int x.s_id) ^ "_" ^ (x.s_name)
 	
+    let pretty fmt (x:t) = 
+      Format.fprintf fmt "%s" (varname x)
+
     let reprs = 
       [{
       s_id = -1;
