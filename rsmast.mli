@@ -28,9 +28,10 @@ type info =
 module rec Type_RState : 
   (sig
     type t = {  
-      mutable s_id : int ;                    (** Identification of the 
+      s_id : int ;                    (** Identification of the 
 						  node  *)
       mutable s_name : string ;               (** RState name  *)
+      mutable deleted : bool ; (** True iff the node is deleted *)
       mutable s_accept : Id_Formula.Set.t ;   (** Set of buchi conditions 
 						  the state 
 						  satisfies. *)
@@ -77,7 +78,7 @@ and Type_Box: ( sig
   type t = 
     {
       
-      mutable b_id : int ;              (** Box's ID *)
+      b_id : int ;              (** Box's ID *)
       mutable b_name : string ;         (** Name of the box  *)
       mutable r_mod_repres : Type_Rsm_module.t ; (** Module represented by the box  *)
       mutable r_mod_belong : Type_Rsm_module.t ; (** Module the box belong to *)
@@ -115,8 +116,10 @@ and Type_Rsm_module:
 
 and RState: (Datatype.S_with_collections with type t = Type_RState.t)
 
-and Box: (Datatype.S_with_collections with type t = Type_Box.t)
-
+and Box: 
+  sig 
+    include (Datatype.S_with_collections with type t = Type_Box.t)
+  end
 and Rsm_module : Datatype.S_with_collections with type t = Type_Rsm_module.t
 (* module Box: Datatype.S_with_collections with type t = Type_Box.t
 module RState : Datatype.S_with_collections with type t = Type_RState.t	   

@@ -299,6 +299,7 @@ let treatment file formula closure atoms =
 		   (fun r_mod str -> 
 		     (RState.Set.fold 
 			(fun state sub_str -> 
+			  if not(Rsm.isDeleted state) then
 			  let more_infos = 
 			    match state.call with
 			      Some (box,_) -> 
@@ -320,6 +321,7 @@ let treatment file formula closure atoms =
 			    then ""
 			    else "\nAccepts :" ^ Caret_print.string_raw_atom state.s_accept)
 			  ^ more_infos
+			  else ""
 			)
 			r_mod.states
 			""

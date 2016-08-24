@@ -49,7 +49,11 @@ let search_paths rsm path_to_loop_tbl loops_tbl =
 	in
 	RState.Hashtbl.fold
 	  (fun loop_entry path_list acc' -> 
-	    
+	    let () = 
+	      Caret_option.debug ~dkey 
+		"linked to exit %a"
+		RState.pretty loop_entry in
+
 	    if analyse_path path_list then 
 	      let loop_tbl = RState.Hashtbl.find loops_tbl loop_entry
 	      in

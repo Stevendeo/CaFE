@@ -110,15 +110,7 @@ let string_state_set s_set =
     "\n"
 
 let simple_state state = 
-  (*let link = 
-    match state.call with
-      Some (_,ent) -> ("\n_goes_to_st_" ^ (string_state_set ent))
-    | None -> 
-      match state.return with
-	Some (_,ext) -> ("_from_" 
-			 ^ "_st_" 
-			 ^ string_state_set ext)
-      | None -> "" in*)
+
   ("\"" ^ (short_state state) ^ "_st_" ^ (string_of_int state.s_id) ^(string_tag state.s_info)^ ": " ^ state.s_name (*^ link *) ^ "\"")
 
 let string_path state_list = 
@@ -134,7 +126,7 @@ let simple_box box =
 
 let string_box box = 
   
-  "Box_" ^  box.b_name ^ (string_of_int box.b_id)
+  (simple_box box)
   ^ "\nAtom : " ^ (string_atom box.box_atom)
   ^ "\n\nEntries :\n" 
   ^ RState.Map.fold 

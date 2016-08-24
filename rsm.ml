@@ -28,6 +28,7 @@ let dkey = Caret_option.register_category "rsm:utils"
 let dkey_exit = Caret_option.register_category "rsm:exit"
 let dkey_accept = Caret_option.register_category "rsm:accept"
 let dkey_delete = Caret_option.register_category "rsm:delete"
+let dkey_through = Caret_option.register_category "rsm:throughBox"
 
 (* Imported functions from Caret_print *)
 let string_stmt stmt =
@@ -181,6 +182,7 @@ let mkRState name ?(acpt = Id_Formula.Set.empty) stmt atom info r_mod =
       {
 	s_name = name ;
 	s_accept = acpt ;
+	deleted = false;
 	call = None ;     (* To change those, you need to *)
 	return = None ;   (* use the plug functions *)
 	s_stmt = stmt;
@@ -246,7 +248,7 @@ let isStart state =
   && state.s_info = Tag Inf 
   && isEntry state
 
-let isDeleted state = state.s_id < 0
+let isDeleted state = state.deleted
 
 let isAccepting rsm state = 
   (Id_Formula.Set.cardinal rsm.until_set) = Id_Formula.Set.cardinal state.s_accept
@@ -254,11 +256,11 @@ let isAccepting rsm state =
 let isFinal state = 
   RState.Set.mem state state.s_succs
 
-let deleteRState state = (* todo : delete in boxes or change id to -1 *)
+let deleteRState state =
   let () = 
     Caret_option.debug ~dkey:dkey_delete ~level:3
-      "Deleting state %s"
-      (simple_state state) in
+      "Deleting state %a"
+      RState.pretty state in
   if isDeleted state then () else 
     let () = 
       let rmod = state.s_mod
@@ -323,7 +325,8 @@ let deleteRState state = (* todo : delete in boxes or change id to -1 *)
       state.s_preds <- RState.Set.empty in
   (*state.s_stmt <- Cil.dummyStmt;*)
     state.s_name <- "DELETED";
-    state.s_id <- -1 * state.s_id
+    state.deleted <- true
+    
       
 let addRState st ?(entry = false) ?(exits = false) r_mod = 
 
@@ -360,13 +363,61 @@ let throughBox state box =
   
   try 
     if isCall state
-    then RState.Map.find state box.b_entries
+    then 
+      let () = 
+	Caret_option.debug ~dkey:dkey_through
+	  "State %a is a call" RState.pretty state;
+	
+	Caret_option.debug ~dkey:dkey_through ~level:3
+	  "Entry map : ";
+	
+	RState.Map.iter 
+	  (fun entry exts -> 
+	    Caret_option.debug ~dkey:dkey_through ~level:3
+	      "Call : %a" RState.pretty entry;
+	    
+	    RState.Set.iter
+	      (fun ext -> 
+		Caret_option.debug ~dkey:dkey_through ~level:3
+		  "--Entry : %a" RState.pretty ext
+	      )
+	      exts)
+	  box.b_entries 
+	  in
+	
+      
+	RState.Map.find state box.b_entries 
     else 
       if isExit state
-      then RState.Map.find state box.b_exits
+      then 
+	let () = 
+	  Caret_option.debug ~dkey:dkey_through
+	    "State %a is an exit" RState.pretty state;
+	  
+	  Caret_option.debug ~dkey:dkey_through ~level:3
+	    "Exit map : ";
+	  
+	  RState.Map.iter 
+	    (fun entry exts -> 
+	      Caret_option.debug ~dkey:dkey_through ~level:3
+		"Exit : %a --> %b" RState.pretty entry (RState.equal entry state);
+	      if (RState.equal entry state) then
+		RState.Set.iter
+		  (fun ext -> 
+		    Caret_option.debug ~dkey:dkey_through ~level:3
+		      "--Ret : %a" RState.pretty ext
+		  )
+		  exts)
+	    box.b_exits
+	in
+	RState.Map.find state box.b_exits
       else failwith "through_box"
   with 
-    Not_found -> RState.Set.empty
+    Not_found -> 
+      let () = 
+	Caret_option.debug ~dkey:dkey_through
+	  "Linked to no state !" in
+      RState.Set.empty
   | Failure "through_box" -> raise Not_found
 
 let getSuccs (state:RState.t) box = 
@@ -417,6 +468,7 @@ let copyRState s =
 	s_preds = s.s_preds;
 	summary_succs = s.summary_succs;
 	summary_preds = s.summary_preds;
+	deleted = s.deleted;
     } 
 
 let copy_mod m = m
@@ -1247,17 +1299,29 @@ let exitReachability rsm =
       RState.Set.fold
 	(fun entry main_acc -> 
 	  try 
+	    let () = 
+	      Caret_option.debug ~dkey:dkey_exit 
+		"We are seeing the box %a, and exits of %a are :" 
+		Box.pretty box RState.pretty entry 
+	    in
 	    let entry_hashtbl = 
 	      (RState.Hashtbl.find entry_exit_hashtbl entry)
-		
 	    in
 	    
 	    RState.Hashtbl.fold 
 	      (fun ext_state paths acc -> 
+		let () = 
+		  Caret_option.debug ~dkey:dkey_exit 
+		    "-- %a id = %i, which is linked to the return state" 
+		    RState.pretty ext_state ext_state.s_id in 
 		let ret_set = (throughBox ext_state box)
 		in
 		RState.Set.fold
 		  (fun ret acc2 -> 
+		    
+		    let () = 
+		      Caret_option.debug ~dkey:dkey_exit 
+			"---- %a" RState.pretty ret in 
 		    let old_bind = 
 		      try 
 			RState.Map.find 
@@ -1352,9 +1416,14 @@ let print_memoizer tbl =
     
 let print_memoizers () = 
   
-  List.iter 
-    print_memoizer 
-    [loop_memoizer; path_to_loop_memoizer ; entry_exit_hashtbl]
+  
+  Caret_option.feedback "Loop memoizer";
+  print_memoizer loop_memoizer;
+  Caret_option.feedback "Path to loop memoizer";
+  print_memoizer path_to_loop_memoizer;
+  Caret_option.feedback "Entry exit memoizer";
+  print_memoizer entry_exit_hashtbl
+    
 
 let testAcceptance rsm = 
   try 

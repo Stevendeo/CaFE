@@ -55,9 +55,10 @@ module rec Type_RState :(
   sig 
     type t = 
       {  
-	mutable s_id : int ;                    (** Identification of the 
+	s_id : int ;                    (** Identification of the 
 						    node  *)
 	mutable s_name : string ;               (** RState name  *)
+	mutable deleted : bool; (** true iff the node has been deleted *)
 	mutable s_accept : Id_Formula.Set.t ;   (** Set of buchi conditions 
 						    the state 
 						    satisfies. *)
@@ -90,9 +91,10 @@ module rec Type_RState :(
   = 
 struct
   type t =  {  
-    mutable s_id : int ;                    (** Identification of the 
-						node  *)
+    s_id : int ;                    (** Identification of the 
+					node  *)
     mutable s_name : string ;               (** RState name  *)
+    mutable deleted : bool; (** true iff the node has been deleted *)
     mutable s_accept : Id_Formula.Set.t ;   (** Set of buchi conditions 
 						the state 
 						satisfies. *)
@@ -138,10 +140,9 @@ and RState_Make_Input:(Datatype.Make_input with type t = Type_RState.t) =
 	
     let hash (x:t) = x.s_id
     let compare (x:t) (y:t) = 
-      Pervasives.compare 
-	x.s_id 
-	y.s_id
-        
+      
+      Pervasives.compare x.s_id y.s_id
+      
     let varname (x:t) =
       "state_" ^ (string_of_int x.s_id) ^ "_" ^ (x.s_name)
 	
@@ -152,7 +153,9 @@ and RState_Make_Input:(Datatype.Make_input with type t = Type_RState.t) =
       [{
       s_id = -1;
       s_name = "";
+      deleted = true;
       s_accept = Id_Formula.Set.empty ;
+      
       call = None;
       return = None;
       s_stmt = Cil.mkEmptyStmt ();
@@ -210,7 +213,7 @@ and Type_Box:
     type t = 
       {
 	
-	mutable b_id : int ;              (** Box's ID *)
+        b_id : int ;              (** Box's ID *)
 	mutable b_name : string ;         (** Name of the box  *)
 	mutable r_mod_repres : Type_Rsm_module.t ; (** Module represented by the box  *)
 	mutable r_mod_belong : Type_Rsm_module.t ; (** Module the box belong to *)
@@ -229,7 +232,7 @@ and Type_Box:
     type t = 
       {
 	
-	mutable b_id : int ;              (** Box's ID *)
+	b_id : int ;              (** Box's ID *)
 	mutable b_name : string ;         (** Name of the box  *)
 	mutable r_mod_repres : Type_Rsm_module.t ; (** Module represented by the box  *)
 	mutable r_mod_belong : Type_Rsm_module.t ; (** Module the box belong to *)
@@ -267,6 +270,7 @@ struct
       b_exits = empty_structure;
     }
     ]
+  let pretty fmt b = Format.fprintf fmt "%s" (varname b)
   let copy = Datatype.identity
   let rehash = Datatype.identity
   let mem_project = Datatype.never_any_project
@@ -275,8 +279,9 @@ end
   
 and Box : (Datatype.S_with_collections with type t = Type_Box.t)
   =
-  Datatype.Make_with_collections (Box_Make_Input)
-
+  struct 
+    include Datatype.Make_with_collections (Box_Make_Input)
+  end
 and Type_Rsm_module: 
   sig 
     type t = 
