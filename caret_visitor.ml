@@ -264,8 +264,7 @@ object(self)
 		    if 
 		      vi.vorig_name = "main"
 		      && formInAtom formula atom 
-		      && (Id_Formula.Set.equal 
-			(callerFormulas atom) (Id_Formula.Set.empty))
+		      && (Id_Formula.Set.is_empty (callerFormulas atom))
 		      
 		    then 
 		      let () = 
@@ -280,8 +279,9 @@ object(self)
 			Caret_option.debug
 			  ~dkey
 			  ~level:2
-			  "%s is not a start"
+			  "%s is not a start : %b"
 			  (Caret_print.simple_state new_state_inf)
+			  (formInAtom formula atom)
 		    
 		  in
 		  new_state_fin::new_state_inf::acc

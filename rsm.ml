@@ -499,6 +499,9 @@ let copy_mod m = m
 let addMod r_mod rsm = rsm.rsm_mod <- Rsm_module.Set.add r_mod rsm.rsm_mod
 
 let setStart state rsm = 
+  let () = 
+    Caret_option.debug ~dkey ~level:3 
+      "Adding %a as a start" RState.pretty state in
   rsm.start <- RState.Set.add state rsm.start 
 
 let generateBuchi closure rsm = 
@@ -725,16 +728,19 @@ let simplifyAutomaton rsm =
       begin
         
 	Caret_option.debug ~dkey 
-	  "RState %s accessible : computation. Succs = %s"
-	  (simple_state state)
-	  (RState.Set.fold 
-	     (fun s a -> a ^ simple_state s) state.s_succs "");
+	  "RState %a accessible : computation. Succs = "
+	  RState.pretty state;
+	
+	  (RState.Set.iter
+	     (fun s -> 
+	       Caret_option.debug ~dkey 
+		 "%a" RState.pretty s) state.s_succs);
 	
 	state_accessible := RState.Set.add state !state_accessible
 	  
       end	    
     else
-      Caret_option.debug ~dkey "RState %s already treated" (simple_state state);
+      Caret_option.debug ~dkey "RState %a already treated" RState.pretty state;
     
   in
   
@@ -752,12 +758,14 @@ let simplifyAutomaton rsm =
       let () = 
 	Caret_option.debug 
 	  ~dkey 
-	  "%s is useless because of 1 : %b 2 %b"
-	  (simple_state state) is_final_non_accept is_dead_end;
+	  "%a is useless because of 1 : %b 2 %b"
+	  RState.pretty state 
+	  is_final_non_accept 
+	  is_dead_end;
 	
 	RState.Set.iter
 	  (fun state ->  
-	    Caret_option.debug ~dkey ~level:2 "%s\n" (simple_state state)) succs
+	    Caret_option.debug ~dkey ~level:2 "Succ : %a\n" RState.pretty state) succs
 	  
       in
       useless_states := RState.Set.add state !useless_states
@@ -766,16 +774,22 @@ let simplifyAutomaton rsm =
       let () = 
 	Caret_option.debug 
 	  ~dkey 
-	  "%s is not useless because of 1 : %b 2 %b"
-	  (simple_state state) is_final_non_accept is_dead_end
+	  "%a is not useless because of 1 : %b 2 %b"
+	  RState.pretty state is_final_non_accept is_dead_end
 	  in
 	RState.Set.iter
 	  (fun state ->  
-	    Caret_option.debug ~dkey ~level:2 "%s\n" (simple_state state)) succs
+	    Caret_option.debug ~dkey ~level:2 "Succ : %a\n" RState.pretty state) succs
 	  
 	  
   in
   let () =
+    Caret_option.debug ~dkey ~level:4 
+      "Start of simplifiers : ";
+    RState.Set.iter
+      (fun s -> 
+	Caret_option.debug ~dkey ~level:4 
+	  "%a" RState.pretty s) rsm.start ;
     RState.Set.iter (dfs ~pre ~post) rsm.start ;  
     Caret_option.debug ~dkey "Dfs done !"
   in

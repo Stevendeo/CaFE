@@ -129,7 +129,7 @@ type rsm = {
   rsm_id : int ;                    (** Unique Id of the rsm *)
   mutable name : string;            (** Name of the rsm  *)
   mutable rsm_mod : Rsm_module.Set.t; (** Module list of the automaton *)
-  mutable start : RState.Set.t ;      (** Initial state of the automaton *)
+  mutable start : RState.Set.t ;      (** Initial states of the automaton *)
  
   mutable until_set : Id_Formula.Set.t; (** Set of the Buchi conditions. *)
 }
