@@ -10,12 +10,12 @@ void (*p1)(void) = (f1);
 void (*p2)(void) = (f2);
 int x = 0;
 
-while (1){
-	
-	(*p2)();
-	if (rand())
-	{(*p1)();}
-
+while (x < 10){
+  x++;
+  (*p2)();
+  if (rand())
+    {(*p1)();}
+  
 
 }
 

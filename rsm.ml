@@ -753,7 +753,8 @@ let simplifyAutomaton rsm =
 	 (fun succ -> RState.Set.mem succ !useless_states) 
 	 succs)  && not(isCall state)
     in
-    if is_final_non_accept || is_dead_end
+    if not (isExit state) && (is_final_non_accept || is_dead_end) 
+    (* If it is an exit, it might have a successor by another box *) 
     then 
       let () = 
 	Caret_option.debug 

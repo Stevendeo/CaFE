@@ -1542,9 +1542,10 @@ lbl_430:
 /* ---------------------------------------- */
 int main (int argc, char* argv[])
 {
-    int i, j, k;
+  int i, j, k, N = 0;
     int print_hash_value = 0;
-	while(1){
+    while(N < 200){
+      N++;
     if (argc == 2 && strcmp(argv[1], "1") == 0) print_hash_value = 1;
     platform_main_begin();
     crc32_gentab();
