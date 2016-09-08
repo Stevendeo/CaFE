@@ -185,11 +185,7 @@ let updateModStmtHashtbl r_mod stmt s_set =
 	  ~dkey
           ("Module not registered.")
 
-(** We register in this table where every function is called. This allows us to to 
-    limit our analysis to functions called in the main loop or inside the call of 
-    a main loop call. *)
-let (calls_hashtbl:((kernel_function * stmt) list) Kernel_function.Hashtbl.t) = 
-  Kernel_function.Hashtbl.create 42
+
 	  
 let rsm_create_modules rsm formula atoms = 
 
@@ -799,8 +795,13 @@ let createTransTo closure r_mod kf actual_stmt =
 	   ~var 
 	   pre_state.s_atom
 	   post_state.s_atom
-     | Instr (Set _) 
-     | Instr (Call _) -> true 
+     | Instr (Set _) -> true
+     | Instr (Call (Some _,_,_,_)) -> true 
+     | Instr (Call (None,{enode = Lval (Var v, _)},_,_)) -> 
+       let func = 
+	 Globals.Functions.find_by_name v.vorig_name in 
+       not(List.mem func !ignored_functions)
+
      (* todo : test if there is really a modification *)
      | Instr (Asm _) -> 
        Caret_option.debug 
@@ -808,13 +809,24 @@ let createTransTo closure r_mod kf actual_stmt =
 	 ~level:2
 	 "ASM not supported"; true
 	 
-     | _ ->    (* In this case, there is no modification 
+     | Instr _        
+     | Goto _ 
+     | Break _ 
+     | Continue _ 
+     | If _ 
+     | Switch _  
+     | Loop _ 
+     | Block _  
+     | Return _ 
+     | Throw _ | TryCatch _ | TryFinally _ | TryExcept _ -> 
+       (* In this case, there is no modification 
 		  of any variable : we check if the atomic 
 		  properties are the same *)
        noSideEffectNextReq 
 	 pre_state.s_atom
 	 post_state.s_atom
 
+     | UnspecifiedSequence _ -> true
    in
 
    let treatRStates goodTest start_set next_set = 
