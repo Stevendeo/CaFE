@@ -402,6 +402,9 @@ let cegar_path
 	end (* hd.return = None *)
     | Summary paths :: tl -> 
       (* TODO : apply ceana path on summay paths *)
+      let () = 
+	Caret_option.debug ~dkey
+	  "Function call, not supported yet" in
       let acpt = List.fold_left
 	(fun acc (_,a) -> Id_Formula.Set.union a acc)
 	acpt
@@ -411,6 +414,8 @@ let cegar_path
   throughPath acpt path
 
 let cegar_loop init loop = 
+  let () = Caret_option.debug ~dkey ~level:4
+    "Cegar loop call" in
     match cegar_path ~init:(Some init) loop with
       Ok _ as res -> 
 	let () = 
