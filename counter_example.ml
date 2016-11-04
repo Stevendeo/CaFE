@@ -72,7 +72,8 @@ let registerValuesLoop (stmt,_,s_list) =
 	(Zipper.insert old_bind joined_s_list)
 	end
       with
-	Failure "registering" -> 
+	Failure s ->
+	  assert (s = "registering");
 	  Caret_option.debug ~dkey:dkey_reg "Failed to being registered"
 
 let printValueResults () = 
@@ -120,11 +121,12 @@ let resetOneStepZippers path edge =
      
 	| _ -> ()
      with
-      | Invalid_argument "move_left" -> 
+      | Invalid_argument s -> 
+	assert (s = "move_left");
 	Caret_option.debug ~dkey ~level:3 
 	  "Nothing to reset here !")
     path
-  with Failure "stop" -> ()
+  with Failure s -> assert (s = "stop"); ()
 
 let getAndMove stmt = 
   reseted := false;
@@ -142,7 +144,8 @@ let getAndMove stmt =
 	  "Statement @[%a@] not found in the value results"
 	  Printer.pp_stmt stmt
       in raise Not_found
-  | Invalid_argument "move_right" ->
+  | Invalid_argument s ->
+    assert (s = "move_right");
     let z = Stmt.Hashtbl.find real_system stmt in
     let prev_state = get_left z in
     let () = 
@@ -256,7 +259,7 @@ let cegar_path
 		  
 		then
 		  in_loop := (hd.s_stmt) :: !in_loop 
-	      with Failure "hd" -> in_loop := (hd.s_stmt) :: !in_loop 
+	      with Failure s -> assert (s =  "hd"); in_loop := (hd.s_stmt) :: !in_loop 
 	    end
 	| Break _ -> begin try in_loop := List.tl !in_loop with _ -> () end
 	  
@@ -295,7 +298,15 @@ let cegar_path
 	let then_or_else = ref None in
         let is_spur = 
 	  match hd.s_stmt.skind with
-	    If(e,b1,_,_) -> 
+	    If(e,b1,b2,_) -> 
+	      let () = Caret_option.debug ~dkey ~level:3
+		"Evaluating expression %a : is the next statement %a or %a ?" 
+		Printer.pp_exp e
+		Printer.pp_stmt 
+		(try List.hd b1.bstmts with _ -> Cil.dummyStmt)
+		Printer.pp_stmt 
+		(try List.hd b2.bstmts with _ -> Cil.dummyStmt)
+	      in 
 		let c_res = 
 		  !Db.Value.eval_expr 
 		    ~with_alarms
@@ -622,7 +633,7 @@ let analyse_paths rsm path_to_loop_tbl loop_tbl =
 				"Stmt @[%a@] not treated by value"
 				Printer.pp_stmt loop_head.s_stmt;
 			    in acc
-			| Failure "get_right" -> 
+			| Failure s -> assert (s = "get_right");
 			  assert false
 		      else (* path <> [] *)
 			let last_state = 

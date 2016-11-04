@@ -85,7 +85,8 @@ let isConsistent stmt ?(after = true) kf atom =
 	  None -> Db.Value.get_stmt_state (List.hd stmt.Cil_types.succs)
 	| Some s -> s
       with
-      | Invalid_argument "Extlib.the" -> 
+      | Invalid_argument s -> 
+	assert (s = "Extlib.the");
 	Db.Value.get_stmt_state 
 	  (match stmt.Cil_types.succs with [] -> stmt | hd :: _-> hd)
 	  
@@ -308,7 +309,7 @@ let filter_atom_without_v atom v =
 	      ignore 
 		(Cil.visitCilPredicate 
 		   (pred_vis :> Cil.cilVisitor) 
-		   p.Cil_types.content);
+		   p);
 	      true
 	    with
 	      VarInPred -> false

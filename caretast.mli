@@ -2,7 +2,7 @@
 
 (** CaRet formula parsed abstract syntax trees *)
 
-type pred =  Cil_types.predicate Cil_types.named
+type pred =  Cil_types.predicate
 
 type op_kind = 
   |General  (** Operator LTL-like  *)

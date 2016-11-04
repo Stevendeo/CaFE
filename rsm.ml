@@ -356,7 +356,7 @@ let addExits s_list r_mod =
     (fun state -> addExit state r_mod)
     s_list
 
-
+exception Fail_through_box
 let throughBox state box = 
   
   try 
@@ -365,10 +365,10 @@ let throughBox state box =
     else 
       if isExit state
       then RState.Map.find state box.b_exits
-      else failwith "through_box"
+      else (raise Fail_through_box)
   with 
     Not_found -> RState.Set.empty
-  | Failure "through_box" -> raise Not_found
+  | Fail_through_box -> raise Not_found
 
 let getSuccs (state:RState.t) box = 
   match state.call with
@@ -851,7 +851,7 @@ let exitReachability rsm =
 	  exit_state
 	
     with
-      Failure "get_right" -> ()
+      Failure _ (*get_right*) -> ()
       
   in
   
@@ -910,7 +910,7 @@ let exitReachability rsm =
       if f cur then Zipper.move_right zip
       else unzip_until_f f (Zipper.move_right zip)
     with
-      Failure "get_right" -> failwith "unzip"
+      Failure _(* "get_right" *) -> failwith "unzip"
   (* | _ -> unzip_until_f f (Zipper.move_right zip)*)
   (* ^^^^^^^^This bug deserves to be remembered^^^^^ *)
 
@@ -964,7 +964,7 @@ let exitReachability rsm =
 	      loop_root)
 	  paths_to_loop_root
 	with
-	  Failure "unzip" -> 
+	  Failure s -> assert (s = "unzip"); 
 	    Caret_option.debug ~dkey:dkey_exit
 	      "%s has not been visited"
 	      (simple_state loop_root)
@@ -1074,7 +1074,7 @@ let exitReachability rsm =
 		  in 
 		  RState.equal s start)
 	    (Zipper.of_list visited_states)
-	  with Failure "unzip" -> 
+	  with Failure s -> (assert (s = "unzip"));
 	    Zipper.empty
 	in
 
