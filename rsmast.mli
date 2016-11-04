@@ -28,7 +28,7 @@ type info =
 module rec Type_RState : 
   (sig
     type t = {  
-      mutable s_id : int ;                    (** Identification of the 
+      s_id : int ;                    (** Identification of the 
 						  node  *)
       mutable s_name : string ;               (** RState name  *)
       mutable s_accept : Id_Formula.Set.t ;   (** Set of buchi conditions 
@@ -59,6 +59,7 @@ module rec Type_RState :
       mutable summary_succs : 
 	(((Ext_state.t list) * Id_Formula.Set.t) list) RState.Map.t  ; 
       mutable summary_preds : RState.Set.t ;
+      mutable deleted : bool;
     }
    end)
 

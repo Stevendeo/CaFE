@@ -192,6 +192,7 @@ let mkRState name ?(acpt = Id_Formula.Set.empty) stmt atom info r_mod =
 	s_preds = RState.Set.empty;
 	summary_succs = RState.Map.empty;
 	summary_preds = RState.Set.empty;
+	deleted = false;
     } 
 
   
@@ -246,7 +247,7 @@ let isStart state =
   && state.s_info = Tag Inf 
   && isEntry state
 
-let isDeleted state = state.s_id < 0
+let isDeleted state = state.deleted
 
 let isAccepting rsm state = 
   (Id_Formula.Set.cardinal rsm.until_set) = Id_Formula.Set.cardinal state.s_accept
@@ -323,7 +324,7 @@ let deleteRState state = (* todo : delete in boxes or change id to -1 *)
       state.s_preds <- RState.Set.empty in
   (*state.s_stmt <- Cil.dummyStmt;*)
     state.s_name <- "DELETED";
-    state.s_id <- -1 * state.s_id
+    state.deleted <- true
       
 let addRState st ?(entry = false) ?(exits = false) r_mod = 
 
@@ -417,6 +418,7 @@ let copyRState s =
 	s_preds = s.s_preds;
 	summary_succs = s.summary_succs;
 	summary_preds = s.summary_preds;
+	deleted = s.deleted;
     } 
 
 let copy_mod m = m
