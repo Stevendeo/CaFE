@@ -358,67 +358,19 @@ let addExits s_list r_mod =
     (fun state -> addExit state r_mod)
     s_list
 
-
+exception Fail_through_box
 let throughBox state box = 
   
   try 
     if isCall state
-    then 
-      let () = 
-	Caret_option.debug ~dkey:dkey_through
-	  "State %a is a call" RState.pretty state;
-	
-	Caret_option.debug ~dkey:dkey_through ~level:3
-	  "Entry map : ";
-	
-	RState.Map.iter 
-	  (fun entry exts -> 
-	    Caret_option.debug ~dkey:dkey_through ~level:3
-	      "Call : %a" RState.pretty entry;
-	    
-	    RState.Set.iter
-	      (fun ext -> 
-		Caret_option.debug ~dkey:dkey_through ~level:3
-		  "--Entry : %a" RState.pretty ext
-	      )
-	      exts)
-	  box.b_entries 
-	  in
-	
-      
-	RState.Map.find state box.b_entries 
+    then RState.Map.find state box.b_entries
     else 
       if isExit state
-      then 
-	let () = 
-	  Caret_option.debug ~dkey:dkey_through
-	    "State %a is an exit" RState.pretty state;
-	  
-	  Caret_option.debug ~dkey:dkey_through ~level:3
-	    "Exit map : ";
-	  
-	  RState.Map.iter 
-	    (fun entry exts -> 
-	      Caret_option.debug ~dkey:dkey_through ~level:3
-		"Exit : %a --> %b" RState.pretty entry (RState.equal entry state);
-	      if (RState.equal entry state) then
-		RState.Set.iter
-		  (fun ext -> 
-		    Caret_option.debug ~dkey:dkey_through ~level:3
-		      "--Ret : %a" RState.pretty ext
-		  )
-		  exts)
-	    box.b_exits
-	in
-	RState.Map.find state box.b_exits
-      else failwith "through_box"
+      then RState.Map.find state box.b_exits
+      else (raise Fail_through_box)
   with 
-    Not_found -> 
-      let () = 
-	Caret_option.debug ~dkey:dkey_through
-	  "Linked to no state !" in
-      RState.Set.empty
-  | Failure "through_box" -> raise Not_found
+    Not_found -> RState.Set.empty
+  | Fail_through_box -> raise Not_found
 
 let getSuccs (state:RState.t) box = 
   match state.call with
@@ -916,7 +868,7 @@ let exitReachability rsm =
 	  exit_state
 	
     with
-      Failure "get_right" -> ()
+      Failure _ (*get_right*) -> ()
       
   in
   
@@ -975,7 +927,7 @@ let exitReachability rsm =
       if f cur then Zipper.move_right zip
       else unzip_until_f f (Zipper.move_right zip)
     with
-      Failure "get_right" -> failwith "unzip"
+      Failure _(* "get_right" *) -> failwith "unzip"
   (* | _ -> unzip_until_f f (Zipper.move_right zip)*)
   (* ^^^^^^^^This bug deserves to be remembered^^^^^ *)
 
@@ -1029,7 +981,7 @@ let exitReachability rsm =
 	      loop_root)
 	  paths_to_loop_root
 	with
-	  Failure "unzip" -> 
+	  Failure s -> assert (s = "unzip"); 
 	    Caret_option.debug ~dkey:dkey_exit
 	      "%s has not been visited"
 	      (simple_state loop_root)
@@ -1139,7 +1091,7 @@ let exitReachability rsm =
 		  in 
 		  RState.equal s start)
 	    (Zipper.of_list visited_states)
-	  with Failure "unzip" -> 
+	  with Failure s -> (assert (s = "unzip"));
 	    Zipper.empty
 	in
 
@@ -1321,6 +1273,7 @@ let exitReachability rsm =
 	    in
 	    let entry_hashtbl = 
 	      (RState.Hashtbl.find entry_exit_hashtbl entry)
+		
 	    in
 	    
 	    RState.Hashtbl.fold 

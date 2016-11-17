@@ -1,4 +1,4 @@
-int x = -2;
+int x = 0;
 void f(void) { 
 	x ++;
 	x --; 

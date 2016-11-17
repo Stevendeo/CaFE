@@ -42,10 +42,10 @@ let delete_right z =  match z.right with
   | _ :: r -> { z with right = r }
 
 let get_left z = 
-  try List.hd z.left with Failure "hd" -> raise (Failure "get_left")
+  try List.hd z.left with Failure _ -> raise (Failure "get_left")
 
 let get_right z = 
-  try List.hd z.right with Failure "hd" -> raise (Failure "get_right")
+  try List.hd z.right with Failure _ -> raise (Failure "get_right")
 
 let rec reset_left z = try reset_left (move_left z) with _ -> z
 

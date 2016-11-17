@@ -1,5 +1,9 @@
+open Cil_datatype
+open Cil_types
+open Zipper
 open Rsmast 
 open Formula_datatype
+open Caretast
 
 type counter_example = (Ext_state.t list * Atoms.raw_atom) list * (((Ext_state.t list) * Id_Formula.Set.t) list)
 
@@ -65,6 +69,4 @@ let search_paths rsm path_to_loop_tbl loops_tbl =
 	Not_found -> acc)
     rsm_entries
     []
-    
-    
     

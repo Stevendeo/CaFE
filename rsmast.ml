@@ -155,7 +155,6 @@ and RState_Make_Input:(Datatype.Make_input with type t = Type_RState.t) =
       s_name = "";
       deleted = true;
       s_accept = Id_Formula.Set.empty ;
-      
       call = None;
       return = None;
       s_stmt = Cil.mkEmptyStmt ();
