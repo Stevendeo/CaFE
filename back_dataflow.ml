@@ -10,108 +10,14 @@ module Pid = State_builder.SharedCounter
 let new_pid = Pid.next
 *)
 
-let dkey_stmt = Mat_option.register_category "back_dataflow:doStmt"
-let dkey_if = Mat_option.register_category "back_dataflow:if_cond"
+let dkey_stmt = Caret_option.register_category "back_dataflow:doStmt"
+let dkey_if = Caret_option.register_category "back_dataflow:if_cond"
+
 type if_tag = Then | Else 
 
 type if_stmt = stmt * if_tag
 
-(** 1. Predicate utilities *)
-
-let cvc_test p = 
-  
-  let str_pred = 
-    Mat_printer.predicate_to_cvc p
-  in
-  
-  Mat_option.debug "%s" str_pred;
-  (*let par_op = Str.regexp "(" in 
-  let par_cl = Str.regexp ")" in 
-
-  let str_pred = 
-    Str.global_replace 
-      par_op 
-      "\\("
-      cvc_str
-  in
-  
-  let str_pred = 
-    Str.global_replace par_cl 
-       "\\)" 
-       str_pred 
-  in*)
-  let str_pred = 
-    ("prop: BOOLEAN =" ^  str_pred ^ "; CHECKSAT prop;")
-  in
-  let echo_cmd = "echo \"" ^ str_pred  ^ "\" > __smt_cafe_tmp.cvc" in 
-  let cvc_cmd = "cvc3 __smt_cafe_tmp.cvc > __smt_res.txt" in 
-
-  if Sys.command echo_cmd <> 0
-  then  Mat_option.abort "failed to run cvc3 : echo failed"
-  else 
-    let () = Mat_option.debug "echo ok" in
-    
-    if Sys.command cvc_cmd <> 0
-    then Mat_option.abort "failed to run cvc3"
-    else 
-      let () = Mat_option.debug "cvc3 ok" in
-      
-      let file = open_in "__smt_res.txt" in
-      let result = input_line file in 
-      let () = close_in file
-      in
-      match result with
-	"Satisfiable." -> true
-      | "Unsatisfiable." -> false
-      | _ -> Mat_option.abort "cvc crashed : %s" result
-
-let predicate_to_dreal pred = 
-
-  let rel_str = 
-    function
-    | Rlt -> "<"
-    | Rgt -> ">"
-    | Rle -> "<="
-    | Rge -> ">="
-    | Req -> "="
-    | Rneq -> assert false
-  in
-  let treat_term term = 
-    String.trim
-      (Format.fprintf 
-	 Format.str_formatter 
-	 "@[%a@]" 
-	 Printer.pp_term 
-	 term;
-       Format.flush_str_formatter ()
-      )
-  in
-  
-  let rec treat_pred p = 
-    match p.pred_content with
-    | Pfalse -> "false"
-    | Ptrue -> "true"
-    | Prel (rel,t1, t2) -> 
-      (rel_str rel) ^ " (" ^ (treat_term t1)  ^ ") (" ^(treat_term t2) ^ ")"
-    | Pand (p1, p2) -> 
-      "and (" ^ (treat_pred p1)  ^ ") (" ^(treat_pred p2) ^ ")"
-    | Por (p1, p2) -> 
-      "or (" ^ (treat_pred p1)  ^ ") (" ^(treat_pred p2) ^ ")"
-    | Pimplies (p1, p2) -> 
-      "=> (" ^ (treat_pred p1)  ^ ") (" ^(treat_pred p2) ^ ")"
-    | Piff (p1, p2)-> 
-      "iff (" ^ (treat_pred p1)  ^ ") (" ^(treat_pred p2) ^ ")"
-    | Pxor (p1, p2) -> 
-      "xor (" ^ (treat_pred p1)  ^ ") (" ^(treat_pred p2) ^ ")"
-    | Pnot p -> "not (" ^ (treat_pred p) ^ ")"
-    | _ -> 
-      Mat_option.fatal "What do we have here... @[%a@]" 
-	Printer.pp_predicate pred
-	
-  in
-  "(assert (" ^ (treat_pred pred) ^ ")"
-
-(** 2. Dataflow *)
+(** 1. Dataflow *)
 
 let (if_stmt_hashtbl : if_stmt Stmt.Hashtbl.t) = Stmt.Hashtbl.create 12
   
@@ -132,10 +38,7 @@ let update_loop_table loop_stmt b =
     b
 
 let lvar_created = ref []
- 
-let (wp_results_table : predicate Kernel_function.Hashtbl.t)
-    = Kernel_function.Hashtbl.create 101
-  
+   
 module CafeStartData:(
   StmtStartData with type data = predicate * (logic_var list) )
   =
@@ -184,7 +87,7 @@ struct
     with 
       Not_found -> 
 	let () = 
-	  Mat_option.debug 
+	  Caret_option.debug 
 	    "@[%a@] never seen : registering"
 	    Printer.pp_varinfo
 	    var
@@ -200,7 +103,7 @@ struct
 	  
   let get_new_lvar var = 
     let () =  
-      Mat_option.debug 
+      Caret_option.debug 
 	"New variable for %a"
 	Printer.pp_varinfo var in
     if Varinfo.Map.mem var !var_map 
@@ -216,7 +119,7 @@ struct
 	lvar_created := res :: !lvar_created
       in
       let () = 
-	Mat_option.debug 
+	Caret_option.debug 
 	  "New representant for @[%a@] : @[%a@]"
 	  Printer.pp_varinfo 
 	  var
@@ -251,205 +154,42 @@ struct
       
     method! vlogic_var_use lvar = 
       match lvar.lv_origin with
-	None -> Mat_option.fatal "Bad initialisation of variable"
+	None -> Caret_option.fatal "Bad initialisation of variable"
       | Some v -> 
 	ChangeTo (get_lvar v)
 	
   end	  
-   
-exception Not_a_simple_loop
-
-let loop_to_the_n b loop_cond = 
-  let var_index_map,mat_list = 
-    try 
-      Slap_utilities.analyse_block b
-    with Slap_utilities.Non_linear_loop -> Varinfo.Map.empty,[]
+  
+let correct_term_from_exp exp = 
+  
+  let () = 
+    Caret_option.debug "Exp : @[%a@]" Printer.pp_exp exp
+  in
+  let exp_termed = Logic_utils.expr_to_term ~cast:false exp 
+  in
+  
+  let term = 
+    Cil.visitCilTerm 
+      (update_lvars :> Cil.cilVisitor) 
+      exp_termed	  
+  in
+  
+  let term = 
+    match term.term_node with  
+      TCastE (typ,t) ->
+	Logic_const.term t.term_node (Logic_utils.typ_to_logic_type typ)
+    | _ -> term
   in
   let () = 
-      (* Adding forgotten variables to the var_map *)
-    Varinfo.Map.iter
-      (fun v _ -> ignore (get_lvar v))
-      var_index_map
+    Caret_option.debug "Term : @[%a@]" Printer.pp_term term
   in
-  match mat_list with
-    [] -> Ptrue
-      
-  | _ :: _ :: _ -> 
-    Mat_option.debug "We don't treat conditions in loops yet"; 
-    Ptrue
-
-  | s_mat :: _ -> 
+  term
     
-      let p,t,pm = 
-	  try
-	    Slap_utilities.trigon_matrix
-	      (Slap_utilities.copy_mat s_mat)
-	  with
-	    Slap_utilities.Complex_eigen_values -> 
-	      Mat_option.debug
-		"Complex eigen values."; raise Not_a_simple_loop
-      in
-      let () = 
-	Mat_option.debug ~level:2 ~dkey:dkey_stmt
-	  "P = @[%a@]\nT = @[%a@]\nP-1 = @[%a@] "
-	  Lacaml_D.pp_mat p
-	  Lacaml_D.pp_mat t
-	  Lacaml_D.pp_mat pm
-	  
-      in
-      let open Matrix in
-      
-      let t_term = t |> float_lacaml_to_float |> to_the_n in
-      
-      Mat_option.debug ~level:2
-	"T to the n gives\n @[%a@]"
-	Term_M.pp_mat (t_term)
-      ;
-      let p_term = p |> float_lacaml_to_float |> float_to_term
-      in
-      let pinv_term = pm |> float_lacaml_to_float |> float_to_term
-      in
-      let mat_n = 
-	Term_M.mult 
-	  p_term 
-	  (Term_M.mult t_term pinv_term)
-      in
-      
-      let old_var_map = !var_map in
-      
-      let term_one_step_mat = s_mat |> float_lacaml_to_float |> float_to_term
-      in
-      
-      let term_one_step_map =  
-	Matrix.mat_to_terms 
-	  !var_map 
-	  var_index_map
-	  term_one_step_mat
-      in
-      
-      let () = (* updates all variables *)
-	Varinfo.Map.iter
-	  (fun vinf _ -> 
-	    ignore (get_new_lvar vinf)
-	  )
-	  term_one_step_map
-      in
-      
-      
-      let end_loop_pred = 
-	  (* This predicate specifies whether one iteration of the loop 
-	     ends up in the final state by starting in a state satisfying the 
-	     loop_condition *)
-	Varinfo.Map.fold
-	  (fun vinf term acc ->
-	    let old_var = Varinfo.Map.find vinf old_var_map
-	      in
-	    
-	    let correct_term = 
-	      Cil.visitCilTerm (update_lvars :> Cil.cilVisitor) term
-	    in
-	    let lval_term = Logic_const.tvar old_var
-	    in
-	    let eq_pred = 
-	      Prel 
-		(Req,
-		 lval_term,
-		 correct_term)
-	    in
-	    if acc = Ptrue then eq_pred 
-	    else
-	      Pand
-		((unamed acc),
-		 (unamed eq_pred)) 
-	  )
-	  term_one_step_map
-	  (Pnot loop_cond)
-	  
-      in
-      
-      let term_mat_n_map = 
-	  (* terms corresponding to matrix lines, 
-	     in the var_map iteration order *)
-	Matrix.mat_to_terms !var_map var_index_map mat_n
-      in
-      
-      let old_var_map = !var_map
-      in
-      let new_loop_cond = 
-	Cil.visitCilPredicate 
-	  (update_lvars :> Cil.cilVisitor)
-	  loop_cond
-      in
-      let () = (* updates all variables of var_map *)
-	Varinfo.Map.iter
-	  (fun vinf _ -> 
-	    ignore (get_new_lvar vinf)
-	  )
-	  term_mat_n_map
-      in
-      
-      let other_iterations = 
-	  (* This predicate specifies whether we can satisfy the previous 
-	     predicate by taking n loop and still satisfy the loop_condition *)
-	
-	Varinfo.Map.fold
-	  (fun vinf term acc ->
-	    let old_var = Varinfo.Map.find vinf old_var_map
-	    in
-	    
-	    let correct_term = 
-	      Cil.visitCilTerm (update_lvars :> Cil.cilVisitor) term
-	    in
-	    let lval_term = Logic_const.tvar old_var
-	    in
-	    let eq_pred = 
-	      Prel 
-		(Req,
-		 lval_term,
-		 correct_term)
-	    in
-	    if acc = Ptrue then eq_pred 
-	      else
-	      Pand
-		((unamed acc),
-		 (unamed eq_pred)) 
-	  )
-	  term_mat_n_map
-	  new_loop_cond.pred_content
-      in
-      
-      Pand ((unamed other_iterations),(unamed end_loop_pred))
-  
-  let correct_term_from_exp exp = 
-    
-    let () = 
-      Mat_option.debug "Exp : @[%a@]" Printer.pp_exp exp
-    in
-    let exp_termed = Logic_utils.expr_to_term ~cast:false exp 
-    in
-    
-    let term = 
-      Cil.visitCilTerm 
-	(update_lvars :> Cil.cilVisitor) 
-	exp_termed	  
-    in
-    
-    let term = 
-      match term.term_node with  
-	TCastE (typ,t) ->
-	  Logic_const.term t.term_node (Logic_utils.typ_to_logic_type typ)
-      | _ -> term
-    in
-    let () = 
-      Mat_option.debug "Term : @[%a@]" Printer.pp_term term
-    in
-    term
-    
-  let if_conds_as_pred (s : stmt list) : predicate = 
+let if_conds_as_pred (s : stmt list) : predicate = 
     let __if_conds_as_preds stmt = 
       
 	
-	let () = Mat_option.debug ~dkey:dkey_if ~level:3 
+	let () = Caret_option.debug ~dkey:dkey_if ~level:3 
 	  "If statement : @[%a@]"
 	  Printer.pp_stmt stmt
 	in
@@ -502,7 +242,7 @@ let loop_to_the_n b loop_cond =
 
     if not (Varinfo.Map.mem vinfo !var_map)
     then
-      let () = Mat_option.debug "%s not registered" vinfo.vname
+      let () = Caret_option.debug "%s not registered" vinfo.vname
       in
       
       let new_var = get_new_lvar vinfo
@@ -516,7 +256,7 @@ let loop_to_the_n b loop_cond =
       let logic_var = get_lvar vinfo
       in
       let () = 
-	Mat_option.debug "@[%a@] replaced by @[%a@]"
+	Caret_option.debug "@[%a@] replaced by @[%a@]"
 	  Printer.pp_logic_var 
 	  logic_var
 	  Printer.pp_term
@@ -526,14 +266,14 @@ let loop_to_the_n b loop_cond =
       let visitor = change_var_to_term logic_var new_term
       in
       (Cil.visitCilPredicate (visitor :> Cil.cilVisitor) (unamed pred))
-
+(*
   let uniformize old_vars = 
   (* creates a predicate binding every variable of old_vars to the actual
      var registered. *)
     List.fold_left
       (fun acc l_var ->
 	let () = 
-	  Mat_option.debug
+	  Caret_option.debug
 	    ~level:2
 	    ~dkey:dkey_stmt
 	    "Old lvar : @[%a@]"
@@ -563,7 +303,7 @@ let loop_to_the_n b loop_cond =
       )
       Ptrue 
       old_vars
-      
+*)
 
   (* 2. Dataflow functions *)
 
@@ -573,7 +313,7 @@ let loop_to_the_n b loop_cond =
     
   let combineStmtStartData s ~old newd =
     let () = 
-      Mat_option.debug ~level:2
+      Caret_option.debug ~level:2
 	
 	"Statement %a :\n old = @[%a@]\npred = @[%a@] "
 	Printer.pp_stmt
@@ -586,18 +326,18 @@ let loop_to_the_n b loop_cond =
     if Stmt.Set.mem s !treated_stmt 
     then 
       let () = 
-	Mat_option.debug ~level:2 "Statement already treated" in
+	Caret_option.debug ~level:2 "Statement already treated" in
 	None
     else 
       let () = 
-	Mat_option.debug ~level:2 "Statement never treated" in
+	Caret_option.debug ~level:2 "Statement never treated" in
       let () = treated_stmt := Stmt.Set.add s !treated_stmt
       in
       
       match s.skind with 
 	Loop _ ->
 	  let () = 
-	    Mat_option.debug ~level:4 "This is a loop" in
+	    Caret_option.debug ~level:4 "This is a loop" in
 	  let p_old,_ = old
 	  in 
 	  let p_new,v_new = newd
@@ -611,7 +351,7 @@ let loop_to_the_n b loop_cond =
 	  in Some (new_pred,v_new) 
       | _ -> 
       let () = 
-	Mat_option.debug ~level:2 "This is not a loop, we keep the new predicate" in
+	Caret_option.debug ~level:2 "This is not a loop, we keep the new predicate" in
      Some newd
 	
   let combineSuccessors ((succ1,vars1):t) ((succ2,vars2):t) :t = 
@@ -660,7 +400,7 @@ let loop_to_the_n b loop_cond =
     *)
     let treat_block block = 
       let () = 
-	Mat_option.debug ~dkey:dkey_stmt ~level:4
+	Caret_option.debug ~dkey:dkey_stmt ~level:4
 	  "Block treated : @[%a@]"
 	  Printer.pp_block block in
       let stmt_action stmt (wp : predicate option) = 
@@ -757,7 +497,7 @@ let loop_to_the_n b loop_cond =
 	  [] -> Some (unamed Ptrue)
 	| hd :: [] -> 
 	  let () = 
-	    Mat_option.debug ~dkey:dkey_stmt ~level:3
+	    Caret_option.debug ~dkey:dkey_stmt ~level:3
 	      "Last statement treated : @[%a@]"
 	      Printer.pp_stmt 
 	      hd
@@ -768,16 +508,16 @@ let loop_to_the_n b loop_cond =
 	| hd :: tl -> 
 	  
 	  let () = 
-	    Mat_option.debug ~dkey:dkey_stmt ~level:3
+	    Caret_option.debug ~dkey:dkey_stmt ~level:3
 	      "Statement treated : @[%a@]"
 	      Printer.pp_stmt 
 	      hd;
 	    match wp with
 	      None -> 
-		Mat_option.debug ~dkey:dkey_stmt ~level:3
+		Caret_option.debug ~dkey:dkey_stmt ~level:3
 		  "No current predicate"
 	    | Some p -> 
-		Mat_option.debug ~dkey:dkey_stmt ~level:3
+		Caret_option.debug ~dkey:dkey_stmt ~level:3
 		  "Current predicate : %a" Printer.pp_predicate p
 	  in
 	  (stmt_action 
@@ -795,7 +535,7 @@ let loop_to_the_n b loop_cond =
     in
     
     let () = 
-      Mat_option.debug ~dkey:dkey_stmt ~level:2
+      Caret_option.debug ~dkey:dkey_stmt ~level:2
 	"Then block treated"
     in
     let then_wp(* ,then_wlp *) = treat_block b1
@@ -807,7 +547,7 @@ let loop_to_the_n b loop_cond =
     let () =  
       Varinfo.Map.iter
 	(fun v lv -> 
-	  Mat_option.debug 
+	  Caret_option.debug 
 	    "Old : @[%a@] -> @[%a@]"
 	    Printer.pp_varinfo v
 	    Printer.pp_logic_var lv
@@ -817,7 +557,7 @@ let loop_to_the_n b loop_cond =
       
       Varinfo.Map.iter
 	(fun v lv -> 
-	  Mat_option.debug 
+	  Caret_option.debug 
 	    "Then : @[%a@] -> @[%a@]"
 	    Printer.pp_varinfo v
 	    Printer.pp_logic_var lv
@@ -829,7 +569,7 @@ let loop_to_the_n b loop_cond =
     let () = var_map := old_binds
     in
     let () = 
-      Mat_option.debug ~dkey:dkey_stmt ~level:2
+      Caret_option.debug ~dkey:dkey_stmt ~level:2
 	"Else block treated"
     in
     let else_wp(* ,else_wlp *) =
@@ -872,7 +612,7 @@ let loop_to_the_n b loop_cond =
     in
     
     let () = 
-      Mat_option.debug
+      Caret_option.debug
 	"term of condition = @[%a@]" Printer.pp_term term_of_cond
     in
     let cond_satisfied = 
@@ -955,35 +695,11 @@ let loop_to_the_n b loop_cond =
     
     (bind_prefix,wp_form(* ,wlp_form *))
       
-  let loop_as_predicate kf loop_stmt b so = 
-    
-    (* First, we get the condition as a predicate over the actual variables. *)
-    
-    let loop_cond = 
-      let () = 
-	Mat_option.debug ~dkey:dkey_stmt ~level:2
-	  "Loop. Exit statement = @[%a@].\nPreds ="
-	  Printer.pp_stmt
-	  (Extlib.the so)
-      in
-      let () = 
-	List.iter
-	  (fun s -> 
-	    Mat_option.debug ~dkey:dkey_stmt ~level:2
-	      "@[%a@]"
-	      Printer.pp_stmt
-	      s)
-	  
-	  (Extlib.the so).succs
-      in
-      
-      let if_stmts = 
-        (Extlib.the so).succs
-      in 
-      if_conds_as_pred if_stmts
+  let loop_as_predicate kf loop_stmt = 
+   
 	
-    (* Then, we get proven annotations *)
-    in
+    (* We get proven annotations *)
+
     let annot_pred = 
       List.fold_left
 	(fun (acc:predicate) annot ->
@@ -1004,25 +720,19 @@ let loop_to_the_n b loop_cond =
 	(unamed Ptrue)
 	(Annotations.code_annot loop_stmt)
     
-	
-    (* Then, we treat the loop *)
+        
     in
-    let res = 
-      try 
-	unamed (Pand ( unamed(loop_to_the_n b loop_cond), annot_pred)) with
-	  Not_a_simple_loop -> annot_pred
-	| _ -> Mat_option.feedback "Error during matrix study, skip."; annot_pred
-    in
+
     let () = 
-      Mat_option.debug ~level:3
+      Caret_option.debug ~level:3
 	"Loop treatment done. Predicate : %a"
-	Printer.pp_predicate res
+	Printer.pp_predicate annot_pred
     in 
-    res
+    annot_pred
     
   let doStmt s = 
     let () = 
-      Mat_option.debug ~dkey:dkey_stmt "Statement treated : @[%a@]"
+      Caret_option.debug ~dkey:dkey_stmt "Statement treated : @[%a@]"
 	Printer.pp_stmt
 	s
     in
@@ -1030,7 +740,7 @@ let loop_to_the_n b loop_cond =
     then 
     (* We already treated this one, we will not treat it again *)
       let () = 
-	Mat_option.debug ~dkey:dkey_stmt "Statement previously treated"
+	Caret_option.debug ~dkey:dkey_stmt "Statement previously treated"
       in
       Done (StmtStartData.find s)
     else
@@ -1079,13 +789,13 @@ let loop_to_the_n b loop_cond =
 	if not (StmtStartData.mem s)
 	then 
 	  let () = 
-	    Mat_option.debug 
+	    Caret_option.debug 
 	      ~dkey:dkey_stmt 
 	      "Not registered"
 	  in
 	  StmtStartData.add s (prev_data,real_vars)
 	else
-	  Mat_option.debug 
+	  Caret_option.debug 
 	    ~dkey:dkey_stmt 
 	    "Registered"
       in
@@ -1115,7 +825,7 @@ let loop_to_the_n b loop_cond =
 	      CafeStartData.find (List.hd s.succs)
 	    with
 	      Not_found -> 
-		Mat_option.fatal
+		Caret_option.fatal
 		  "@[%a@] has not been found in registered statements."
 		  Printer.pp_stmt 
 		  s
@@ -1157,7 +867,7 @@ let loop_to_the_n b loop_cond =
 	      CafeStartData.find (List.hd s.succs)
 	    with
 	      Not_found -> 
-		Mat_option.fatal
+		Caret_option.fatal
 		  "Loop head @[%a@] not registered"
 		  Printer.pp_stmt 
 		  s
@@ -1174,7 +884,7 @@ let loop_to_the_n b loop_cond =
 	      old_vars
 	  in*)
 	  
-	  let pred = loop_as_predicate (Kernel_function.find_englobing_kf s) s b so
+	  let pred = loop_as_predicate (Kernel_function.find_englobing_kf s) s
 
 	(* pred represents at least one step of the loop. We
 	   need to specify the case "loop not taken".*)
@@ -1203,7 +913,7 @@ let loop_to_the_n b loop_cond =
 	let rec update_block_vars b = 
 	  List.iter
 	    (fun s ->
-	      (*Mat_option.debug ~dkey:dkey_stmt ~level:3 
+	      (*Caret_option.debug ~dkey:dkey_stmt ~level:3 
 		"Statement %a registered as treated" Printer.pp_stmt s;
 	      treated_stmt := Stmt.Set.add s !treated_stmt;
 	      StmtStartData.add s data;
@@ -1225,7 +935,7 @@ let loop_to_the_n b loop_cond =
 	let rec register_block_stmt (b : Cil_types.block) =
 	    List.iter 
 	      (fun s ->
-		Mat_option.debug ~dkey:dkey_stmt ~level:3 
+		Caret_option.debug ~dkey:dkey_stmt ~level:3 
 		  "Statement %a registered as treated" Printer.pp_stmt s;
 		treated_stmt := Stmt.Set.add s !treated_stmt;
 		StmtStartData.add s data;
@@ -1255,7 +965,7 @@ let loop_to_the_n b loop_cond =
     | Set ((lhost,_),exp,_) ->
       match lhost with 
 	Var v -> 
-	  let () = Mat_option.debug "Set : correcting the predicate" in
+	  let () = Caret_option.debug "Set : correcting the predicate" in
 	  Done ((update_pred_about_var v exp pred.pred_content),vars)
       | Mem _ -> Default (* todo : treat tab *)
 	

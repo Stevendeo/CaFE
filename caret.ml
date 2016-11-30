@@ -77,7 +77,8 @@ let treatment file formula closure atoms =
     
     if Create_res.get ()
     then
-       
+      Counter_example.testAcceptance rsm
+       (*
       let () = Rsm.exitReachability rsm;
 
 	(* Comment this part to avoid bad things to happen *)
@@ -237,22 +238,16 @@ let treatment file formula closure atoms =
 	      "____________________\n"
 	      
 	  end;
-	  if not(Output_res.is_default ()) then close_out chan_res
+	  if not(Output_res.is_default ()) then close_out chan_res*)
   end; (* Acceptance *)
-  
+
   begin (* Spurious *)
     if Spurious.get ()
     then
       output_fun stdout (Formula_utils.string_spurious ())
 	
   end;(* Spurious *)
-  begin (* Memoizers *)
-
-   if Caret_option.Print_memo.get () 
-   then
-     Rsm.print_memoizers () 
-
-  end;
+  
   begin (* Print automaton *)
     
     (** Printing the automaton  *)

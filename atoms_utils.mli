@@ -14,7 +14,7 @@ val getAtomKind : atom -> atom_kind
 
 val getPropsFromAtom : atom -> raw_atom
 
-(** Returns a raw_atom with no temporal formula (only simple predicates) *)
+(** Returns a raw_atom with no temporal formula (only first order predicates) *)
 val atomicProps : atom -> raw_atom
 
 (** Checks if a formula is in a raw atom *)

@@ -17,13 +17,15 @@ PLUGIN_CMO 	:= zipper \
 	rsmast \
 	atoms_utils \
 	caret_print \
+	pred_printer \
 	smt_solver \
 	formula_typer \
 	formula_parser \
 	formula_lexer \
 	formula_utils \
-	counter_example \
+	back_dataflow \
 	rsm \
+	counter_example \
 	caret_visitor \
 	caret
 PLUGIN_HAS_MLI	:= yes

@@ -54,6 +54,8 @@ val mkReturn :
   string -> ?acpt:Id_Formula.Set.t -> Cil_types.stmt -> Atom.t -> box -> state -> r_module 
   -> state
 
+val copyRState : state -> state
+
 (** Adds a state to the module in argument. The booleans entry & exits are here 
     to specify if the state is at the beginning or the end of the automaton. 
     They are set by defalt to false. *)
@@ -122,22 +124,3 @@ val addBuchiToRStates : rsm -> unit
 val setStart : state -> rsm -> unit
 
 val simplifyAutomaton : rsm -> unit
-
-(*val degeneralizeAuto : rsm -> rsm
-
-val acceptance_when_ends : rsm -> bool
-*)
-
-val exitReachability : rsm -> unit
-
-(*
-val unfoldAutomaton : rsm -> unit
-*)
-(** Checks if the path found is spurious or not (Todo) *)
-(*val isNotSpurious : (state list * state list list) -> bool
-*)
-
-val testAcceptance :
-  Rsmast.rsm -> Counter_example.counter_example list
-
-val print_memoizers : unit -> unit
