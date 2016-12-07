@@ -253,13 +253,17 @@ let isAccepting rsm state =
 let isFinal state = 
   RState.Set.mem state state.s_succs
 
-let deleteRState state =
+let rec deleteRState state =
   let () = 
     Caret_option.debug ~dkey:dkey_delete ~level:3
       "Deleting state %a"
       RState.pretty state in
   if isDeleted state then () else 
+    
+    (*state.s_stmt <- Cil.dummyStmt;*)
     let () = 
+      state.s_name <- "DELETED";
+      state.deleted <- true in
       let rmod = state.s_mod
       in
       let () =
@@ -267,41 +271,78 @@ let deleteRState state =
 	then
 	  begin (* isEntry state *)
 	    rmod.entries <- RState.Set.remove state rmod.entries;
-      (*	List.iter
-		(fun box -> 
-	  RState.Map.iter 
-		(fun call entry -> 
-		if RState.equal entry state 
-		then )
-		box.b_entries)
-		
-		rmod.box_repres*)
+      	    Box.Set.iter
+	      (fun box -> 
+		RState.Map.iter 
+		  (fun call entry -> 
+		    let new_set = (RState.Set.remove state entry) in
+		    			
+		    if RState.Set.is_empty new_set 
+		    then 
+		      let () = 
+			box.b_entries <- RState.Map.remove call box.b_entries
+		      in deleteRState call
+		    else 
+		      box.b_entries <- RState.Map.add 
+			call 
+		        new_set
+			box.b_entries
+		  )
+		  box.b_entries)
+	      rmod.box_repres
 	  end (* isEntry state *)
-	else       
-	  if isExit state
-	  then
-	    rmod.exits <- RState.Set.remove state rmod.exits
-	  else 
-	    if isCall state
-	    then
-	      begin
-		let box = (fst(Extlib.the state.call))
-		in
-		
-		box.b_entries <- RState.Map.remove state box.b_entries;
-		
-	      end
-	    else 
-	      if isRet state
-	      then 
-		begin
-		  let box = (fst(Extlib.the state.return))
-		  in
-		  
-		  box.b_exits <- RState.Map.remove state box.b_exits;
-		  
-		end
-		  
+	else if isExit state
+	then
+	  rmod.exits <- RState.Set.remove state rmod.exits
+	else if isCall state
+	then
+	  begin
+	    let box = (fst(Extlib.the state.call))
+	    in
+	    
+	    box.b_entries <- RState.Map.remove state box.b_entries;
+	    
+	  end
+	else if isRet state
+	then 
+	  begin
+	    let () = Caret_option.debug ~dkey:dkey_delete ~level:5
+	      "This is a return" in
+	    let box = (fst(Extlib.the state.return))
+	    in
+	    
+	    RState.Map.iter 
+	      (fun ext rets -> 
+		let new_set = (RState.Set.remove state rets) in
+		if RState.Set.is_empty new_set 
+		then 
+		  box.b_exits <- 
+		  (RState.Map.remove 
+		     ext
+		     box.b_exits)
+
+		else 
+		box.b_exits <- 
+		  (RState.Map.add 
+		     ext
+		     new_set 
+		     box.b_exits)		
+	      )
+	    box.b_exits;
+	    
+	    
+	    let () = 
+	      Caret_option.feedback "Remaining exits : %i" 
+	        (RState.Map.cardinal box.b_exits)  in
+	    if RState.Map.is_empty box.b_exits
+	    then 
+	      RState.Map.iter 
+		(fun call _ -> 
+		  deleteRState call 
+		)
+		box.b_entries
+	  end
+	    
       in
       
       state.call <- None;
@@ -311,7 +352,12 @@ let deleteRState state =
       
       let () = 
 	RState.Set.iter
-	  (fun pred -> pred.s_succs <- RState.Set.remove state pred.s_succs)
+	  (fun pred -> 
+	      if RState.Set.cardinal pred.s_succs <= 1
+	      then deleteRState pred 
+	      else
+		pred.s_succs <- RState.Set.remove state pred.s_succs
+	  )
 	  state.s_preds
       in
       RState.Set.iter
@@ -319,10 +365,7 @@ let deleteRState state =
 	state.s_succs;
       
       state.s_succs <- RState.Set.empty;
-      state.s_preds <- RState.Set.empty in
-  (*state.s_stmt <- Cil.dummyStmt;*)
-    state.s_name <- "DELETED";
-    state.deleted <- true
+      state.s_preds <- RState.Set.empty 
     
       
 let addRState st ?(entry = false) ?(exits = false) r_mod = 

@@ -277,11 +277,11 @@ let string_rank r_mod =
   in
   split_states r_mod.states
   
-let string_module rsm ?(cex = RState.Set.empty ) r_mod = 
+let string_module rsm ?(cex = RState.Set.empty) r_mod = 
  "subgraph clustermod_" ^ (string_of_int r_mod.mid) 
   ^ "{\nlabel = \"" ^  r_mod.mod_name ^ "\";\n" ^ 
   (string_state_set rsm ~cex
-     (RState.Set.filter (fun s -> s.s_id > 0) r_mod.states) )
+     (RState.Set.filter (fun s -> (not s.deleted)) r_mod.states) )
   ^ "\n\n"
   ^ (string_tr_set_of_mod r_mod) ^ "\n"
   ^ string_rank r_mod 
