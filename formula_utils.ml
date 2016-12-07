@@ -123,7 +123,7 @@ let isConsistent stmt ?(after = true) kf atom =
     !Db.Value.Logic.eval_predicate 
       (Db.Value.get_initial_state kf) 
       state 
-      pred
+      pred.Cil_types.ip_content
   in
 
   let treatForm f =
@@ -309,7 +309,7 @@ let filter_atom_without_v atom v =
 	      ignore 
 		(Cil.visitCilPredicate 
 		   (pred_vis :> Cil.cilVisitor) 
-		   p);
+		   p.Cil_types.ip_content);
 	      true
 	    with
 	      VarInPred -> false
@@ -766,7 +766,9 @@ let mkAtoms closure atom_hashtbl =
 
   (* We have a list with sets of properties. We call now a SMT solver in 
      order to check if the future atom is possible.  *)
-  
+  let () = 
+    Caret_option.debug ~dkey ~level:3 "Testing atom consistency" in
+
   let atomic_parts = 
     if Caret_option.Atom_simp.get ()
     then

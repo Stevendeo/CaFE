@@ -81,6 +81,7 @@ let stringAKind atom = match getAtomKind atom with
   | IInt -> "Int - "
 
 let string_raw_atom set = 
+  if Id_Formula.Set.is_empty set then "[]" else
   Id_Formula.Set.fold
     (fun f acc ->
       (string_formula f.form)^ " ;\n " ^ acc

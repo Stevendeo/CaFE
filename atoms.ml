@@ -42,5 +42,12 @@ module Atom:Datatype.S_with_collections with type t = atom =
 	      
 	  in
 	  (stringAKind a.a_kind) ^ (string_raw_atom a.atom)
+	
+	let pretty fmt atom = 
+	  Id_Formula.Set.iter
+	    (fun form -> 
+	      Format.fprintf fmt "%a\n" 
+		Id_Formula.pretty form
+	    ) atom.atom
       end
       )

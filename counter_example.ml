@@ -138,12 +138,34 @@ let z3_answer p vars =
 
 let backward_dataflow_from_state s = 
   let first_order_predicate = (* Here is the predicate we will study *) 
-    Id_Formula.Set.fold
-      (fun prop acc -> match prop.form with 
-	CProp(p,_) -> unamed (Pand (acc,p))
-      | CTrue -> acc
+    let unfold_formula p = 
+      let rec neg_unfold is_neg p = 
+	match p with CNot p -> neg_unfold (not is_neg) p
+	| _ -> (is_neg,p)
+      in
+      neg_unfold false p
+    in
+
+    let rec caret_prop_to_predicate p = match p with
+      	CProp (p,_) -> p.ip_content
+      | CTrue -> unamed Ptrue
       | CFalse -> unamed Pfalse
-      | _ -> assert false)
+
+      | CNot _ -> 
+	let neg,prop = unfold_formula p
+	in
+	if neg then unamed (Pnot (caret_prop_to_predicate prop))
+	else caret_prop_to_predicate prop
+	
+      | _ -> 
+	Caret_option.abort "Property %a not supported"
+	  Formula_datatype.Caret_Formula.pretty p
+    in
+    Id_Formula.Set.fold
+      (fun prop acc -> 
+	unamed (Pand (acc, caret_prop_to_predicate prop.form))
+	
+      )
       (Atoms_utils.atomicProps s.s_atom)
       (unamed Ptrue)
   in

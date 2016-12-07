@@ -281,7 +281,7 @@ opkind :
 
 predicate : 
 	| PROP 		
-		{(CProp ((parse_formula $1), (cvc_string $1)))}
+		{(CProp (Logic_const.new_predicate (parse_formula $1), (cvc_string $1)))}
 	| TRUE 		
 		{CTrue}
 	| FALSE 	

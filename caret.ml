@@ -13,8 +13,21 @@ let dkey = Caret_option.register_category "main_caret"
 let output_fun chan = Printf.fprintf chan "%s\n" 
 
 let treatment file formula closure atoms = 	    
- 
   
+  let () = (* Each fundec must be prepared *)
+      let vis = 
+        object
+	  inherit Visitor.frama_c_inplace
+
+	  method! vglob_aux g = 
+	    match g with
+	    | Cil_types.GFun (fundec,_) ->
+	      Cfg.prepareCFG fundec; Cil.DoChildren
+	    | _ -> Cil.DoChildren
+	end 
+      in
+      Cil.visitCilFile (vis :> Cil.cilVisitor) file
+  in
   (** Value computation *)
   let () = 
     
@@ -65,7 +78,7 @@ let treatment file formula closure atoms =
     if Caret_option.Simplify.get () <> 0
     then 
       begin
-	Caret_option.debug ~level:0 "Starting the simplification";
+	Caret_option.feedback "Starting the simplification";
 	Rsm.simplifyAutomaton rsm;
 	
       end 
@@ -77,6 +90,7 @@ let treatment file formula closure atoms =
     
     if Create_res.get ()
     then
+      let () = Caret_option.feedback "Acceptance analysis" in
       Counter_example.testAcceptance rsm
        (*
       let () = Rsm.exitReachability rsm;
@@ -530,6 +544,8 @@ let run () =
 
     let () = Caret_option.feedback "Begin"; 
     in
+    
+      
     let work_prj =
       File.create_project_from_visitor "caret_tmp"
 	(fun prj -> new Visitor.frama_c_copy prj)
