@@ -243,7 +243,7 @@ object(self)
 		    )
 		      
 		  in
-
+		  
 		  let new_state_inf = 
 		    
 		    (mkRState 
@@ -255,35 +255,37 @@ object(self)
 		    )
 		  in	
 		  (*let () = Rsm.addInfRState new_state_inf rsm in*)
-		  let () = 
 
 		    if 
 		      vi.vorig_name = "main"
-		      && formInAtom formula atom 
-		      && (Id_Formula.Set.is_empty (callerFormulas atom))
-		      
-		    then 
-		      let () = 
-			Caret_option.debug
-			  ~dkey
-			  ~level:2
-			  "%s is a start"
-			  (Caret_print.simple_state new_state_inf)
+		    then   
+		      let () =
+			if
+			  formInAtom formula atom 
+			  && (Id_Formula.Set.is_empty (callerFormulas atom))
+			    
+			then 
+			  let () = 
+			    Caret_option.debug
+			      ~dkey
+			      ~level:2
+			      "%s is a start"
+			      (Caret_print.simple_state new_state_inf)
+			  in setStart new_state_inf rsm
+			  
+			else
+			  Caret_option.debug
+			    ~dkey
+			    ~level:2
+			    "%s is not a start : %b"
+			    (Caret_print.simple_state new_state_inf)
+			    (formInAtom formula atom)
 		      in
-		      setStart new_state_inf rsm
-		    else
-			Caret_option.debug
-			  ~dkey
-			  ~level:2
-			  "%s is not a start : %b"
-			  (Caret_print.simple_state new_state_inf)
-			  (formInAtom formula atom)
-		    
-		  in
-		  new_state_fin::new_state_inf::acc
+		      new_state_inf::acc
+		    else 
+		      new_state_fin::new_state_inf::acc
 		end
 	      else acc
-		
 	    )
 	    
 	    (Hashtbl.find atoms IInt)
@@ -608,7 +610,7 @@ let createTransTo closure r_mod kf actual_stmt =
        Caret_option.debug 
 	~dkey:dkey_trans ~level:3
 	"%b -- %b -- %b -- %b"
-	(info_prev = info_state )
+	(info_prev = info_state)
 	(glNextReq closure atom_prev atom_state)
 	(absNextReq closure atom_prev atom_state)
 	(Id_Formula.Set.equal 

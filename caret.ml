@@ -91,168 +91,22 @@ let treatment file formula closure atoms =
     if Create_res.get ()
     then
       let () = Caret_option.feedback "Acceptance analysis" in
-      Counter_example.testAcceptance rsm
-       (*
-      let () = Rsm.exitReachability rsm;
-
-	(* Comment this part to avoid bad things to happen *)
-	Rsm_module.Set.iter 
-	  (fun rmod ->
-	    RState.Set.iter 
-	      (fun state -> 
-		state.s_preds <- 
-		  RState.Set.union state.s_preds state.summary_preds; 
-		
-		let succs_as_set = 
-		  RState.Map.fold
-		    (fun ret _ acc -> RState.Set.add ret acc)
-		    state.summary_succs
-		    state.s_succs
-		in
-		
-		state.s_succs <- 
-		  succs_as_set
-	      ) 
-	      rmod.states
-	  ) 
-	  rsm.rsm_mod
-      
-  
-  (* We create the accepting states of the automaton.  
-     Doing these tests during the state creation is possible,
-     but then tests are done before the simplification, which
-     makes some of them useless. *)
+      let () = 
+	try 
+	  Counter_example.testAcceptance rsm;
+	with
+	  Counter_example.Counter_example_failure -> 
+	    Caret_option.feedback "Post analysis canceled";
       in
-
-
-      let chan_res = 
-	if Output_res.is_default ()
-	then stdout 
-	else open_out (Output_res.get ())
-      in
-      Caret_option.feedback "Testing acceptance";
-      
-      let path_opt = Rsm.testAcceptance rsm 
-      in
-      
-      Caret_option.feedback "Acceptance tested";
-      if path_opt = []
-      then
-	output_fun chan_res "Your program satisfies the formula\n"
-      else
-	let (path,loops) = (List.hd path_opt) in
-	let path =  fst (List.hd path) in
-	let () = 
-	  
-	  cex := 
-	    RState.Set.of_list 
-	    (List.map Ext_state.to_state path);
-	  List.iter
-	    (fun (path,_) -> 
-	      cex := 
-		RState.Set.union 
-		!cex 
-		(RState.Set.of_list (List.map Ext_state.to_state path))
-	    )
-	    loops
-	in
-	
-	begin (* Not accepted  *)
-	  let string_call state = 
-	    try 
-	      (Rsm.getCalledFunc state).Cil_types.vname
-	    with
-	      Not_found -> 
-		match Atoms_utils.getAtomKind state.s_atom with
-		  ICall (Some f) -> f
-		| _ -> state.s_name
-		  
-	  in
-	  let string_path path start_loop = 
-	    let _,res = 
-	      List.fold_left 
-		(fun (cpt,acc) st ->
-		  if st.s_id = start_loop.s_id
-		  then cpt+1,acc^"\nLOOP n°"^ (string_of_int cpt)
-		    
-		    ^"\n-->" 
-		    ^ (if Call_print.get () 
-		      then "" else (Caret_print.simple_state st))^ "\n"
-		    ^ Caret_print.string_state_config st^ "\n"
-		  else
-		    
-		    if Call_print.get () 
-		    then
-		      if  Atoms_utils.isACall st.s_atom
-		      then
-			(cpt, 
-			 acc ^ "\nCall - " ^ 
-			   (string_call st))
-			  
-		      else (cpt,acc)
-		    else
-		      let accepting_state =
-			if 
-			  st.s_accept <> Formula_datatype.Id_Formula.Set.empty
-			then 
-			  "\nAccepts :\n" 
-			  ^ Caret_print.string_raw_atom st.s_accept
-			else ""
-		      in
-		      cpt,acc 
-			^ "\n--" 
-			^ Caret_print.simple_state st  ^ "\n"
-			^ Caret_print.string_state_config st ^ "\n"
-			^ accepting_state
-			  
-		)
-		(1,"\n")
-		path
-	    in res
-	  in
-	  output_fun 
-	    chan_res
-	    "A path has been found that doesn't satisfies the formula !\n";
-	  
-	  List.iter
-	    (fun state -> 
-	      if Call_print.get () 
-	      then 
-		if Atoms_utils.isACall state.s_atom
-		then
-		  
-		    output_fun 
-		      chan_res
-		      ("\nCall - " ^ 
-			  (string_call state)^ "\n"
-		       ^ Caret_print.string_state_config state^ "\n")
-		  else ()
-		else
-		  output_fun 
-		    chan_res
-		    ("-->\n--" ^(Caret_print.simple_state state)^ "\n"
-		     ^ Caret_print.string_state_config state^ "\n");
-		
-	      )
-	      (List.map Ext_state.to_state path); 
-	    List.iter
-	      (fun (loop,_) -> 
-		if List.length loop <> 1
-		then
-		  output_fun 
-		    chan_res 
-		    (string_path 
-		       (List.map Ext_state.to_state loop)
-		       (Ext_state.to_state(List.hd loop))
-		    )
-	      )
-	      loops ;
-	    output_fun 
-	      chan_res 
-	      "____________________\n"
-	      
-	  end;
-	  if not(Output_res.is_default ()) then close_out chan_res*)
+      if RState.Set.is_empty
+	(RState.Set.filter
+	   (fun s -> (not s.deleted))
+	   rsm.start)
+      then 
+	Caret_option.feedback "Every path has been deleted : no counter example found !"
+      else 
+	Caret_option.feedback "Cannot prove the formula."
+       
   end; (* Acceptance *)
 
   begin (* Spurious *)

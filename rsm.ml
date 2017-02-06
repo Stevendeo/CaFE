@@ -332,7 +332,7 @@ let rec deleteRState state =
 	    
 	    
 	    let () = 
-	      Caret_option.feedback "Remaining exits : %i" 
+	      Caret_option.debug ~dkey:dkey_delete ~level:5 "Remaining exits : %i" 
 	        (RState.Map.cardinal box.b_exits)  in
 	    if RState.Map.is_empty box.b_exits
 	    then 
@@ -676,7 +676,7 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
       post state current_box
   in
   dfsRun [] start
-   
+
 let simplifyAutomaton rsm = 
   
   Caret_option.debug ~dkey "Starting the simplification";
@@ -776,5 +776,21 @@ let simplifyAutomaton rsm =
 	r_mod.states
     )
 
-    rsm.rsm_mod
+    rsm.rsm_mod;
 
+  (* Deleting useless modules *)
+
+  Rsm_module.Set.iter
+    (fun rmod -> 
+      let is_useless = 
+	Box.Set.for_all 
+	  (fun b -> 
+	    RState.Map.is_empty b.b_entries || RState.Map.is_empty b.b_exits
+	  )
+	  rmod.box_repres
+      in
+      if is_useless
+      then RState.Set.iter deleteRState rmod.exits
+    )
+    rsm.rsm_mod
+    

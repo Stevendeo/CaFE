@@ -10,6 +10,8 @@ open Rsm
 open Type_RState
 open Type_Rsm_module
 
+exception Counter_example_failure
+
 type smt_answer = 
 | Sat 
 | Unsat 
@@ -60,7 +62,10 @@ let smt_query smt_solver options query =
       prefix_command  ^ " " ^ query_file  ^ " > "  ^  answer_file in
     
     if Sys.command smt_command <> 0
-    then Caret_option.abort "Command line %s failed" smt_command
+    then
+      let () = 
+	Caret_option.feedback "Command line %s failed" smt_command in 
+      raise Counter_example_failure 
     else
       let file = open_in answer_file in
       let result = read_file file in 
