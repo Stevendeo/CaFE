@@ -797,6 +797,21 @@ let createTransTo closure r_mod kf actual_stmt =
 	   ~var 
 	   pre_state.s_atom
 	   post_state.s_atom true*)
+     | Instr (Set ((Var var,_),_,_)) ->
+       let lvar = Cil.cvar_to_lvar var in 
+       let atom_is_affected = 
+	 Id_Formula.Set.exists
+	   (fun p -> 
+	     match p.form with
+	       CProp (p,_) -> Formula_utils.pred_mem lvar p.ip_content
+	     | _ -> false
+	   )
+       in (* if both atoms uses the value of var, then the atoms should be no side effect
+	  *)
+       (atom_is_affected pre_state.s_atom.atom || atom_is_affected post_state.s_atom.atom)
+       || (noSideEffectNextReq 
+	     pre_state.s_atom
+	     post_state.s_atom)
      | Instr (Set _) -> true
      | Instr (Call (Some _,_,_,_)) -> true 
      | Instr (Call (None,{enode = Lval (Var v, _)},_,_)) -> 

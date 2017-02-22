@@ -100,11 +100,11 @@ let treatment file formula closure atoms =
 	       Cil_types.Return _ -> 
 		 (not s.deleted)
 	     | _ -> false)
-	   rsm.start
+	   (Rsm.getMainMod rsm).states
       then 
-	Caret_option.feedback "Every path has been deleted : no counter example found !"
-      else 
 	Caret_option.feedback "Cannot prove the formula."
+      else 
+	Caret_option.feedback "Every path has been deleted : no counter example found !"
        
   end; (* Acceptance *)
 

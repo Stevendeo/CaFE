@@ -171,8 +171,21 @@ let z3_answer ?(vars = []) p =
       end
     | _ -> Caret_option.fatal "? : %s" res
 
-  
-
+let pred_mem lvar pred = 
+  let lvar_vis = 
+object
+  inherit Visitor.frama_c_inplace
+  method! vlogic_var_use lv = 
+    if Logic_var.equal lv lvar
+    then 
+      let () = failwith "true" in SkipChildren
+    else DoChildren
+end
+  in
+  try ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) pred);false
+  with 
+    Failure s -> if s = "true" then true else failwith s
+      
 (** 2. CaFE formula utils *)
 
 let mkIdForm f = 
