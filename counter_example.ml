@@ -106,7 +106,7 @@ let backward_dataflow_from_state s =
       pred
   in
     
-  let answer = try Formula_utils.z3_answer pred vars with 
+  let answer = try Formula_utils.z3_answer ~vars pred with 
       Formula_utils.Smt_query_failure -> 
 	let () = 
 	  Caret_option.feedback "Error in SMT query." in

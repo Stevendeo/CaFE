@@ -15,7 +15,7 @@ type smt_answer =
 | Unknown
 
 
-val z3_answer : Cil_types.predicate -> Cil_types.logic_var list -> smt_answer
+val z3_answer :  ?vars : Cil_types.logic_var list -> Cil_types.predicate ->smt_answer
 
 (** 2. CaFE Formula utils  *)
 val spurious_stmt_hashtbl : Id_Formula.Set.t Cil_datatype.Stmt.Hashtbl.t

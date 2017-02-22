@@ -87,8 +87,24 @@ let smt_query smt_solver options query =
       let () = close_in file in
       result
 
-let z3_answer p vars = 
+let z3_answer ?(vars = []) p = 
 
+  let vars = 
+    if vars <> []
+    then vars
+    else (* We visit the predicate and register every logic variable *)
+      let lvars = ref Logic_var.Set.empty in
+      let lvar_vis = 
+        object
+	  inherit Visitor.frama_c_inplace
+	  method! vlogic_var_use lv = 
+	    lvars := Logic_var.Set.add lv !lvars; DoChildren
+	end
+    
+      in
+      ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) p);
+      Logic_var.Set.elements !lvars 
+  in
   let nlsat_query = 
     Pred_printer.predicate_to_smt_query p "qfnra-nlsat"
   in
@@ -345,8 +361,12 @@ let isConsistent stmt ?(after = true) kf atom =
       res in 
 
   if not res then false 
-  else 
-    true
+  else if annot_pred.Cil_types.pred_content = Cil_types.Ptrue
+  then true
+  else (** Checks if the atom /\ the annotation is satisfiable *)
+    match z3_answer pred_of_atom_and_asserts with
+    | Sat | Unknown -> true
+    | Unsat -> false
     
 (*
   let treatForm f =
