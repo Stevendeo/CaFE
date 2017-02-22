@@ -817,7 +817,10 @@ let createTransTo closure r_mod kf actual_stmt =
      | Instr (Call (None,{enode = Lval (Var v, _)},_,_)) -> 
        let func = 
 	 Globals.Functions.find_by_name v.vorig_name in 
-       not(List.mem func !ignored_functions)
+       not(List.mem func !ignored_functions)  && 
+	 (noSideEffectNextReq 
+	    pre_state.s_atom
+	    post_state.s_atom)
 
      (* todo : test if there is really a modification *)
      | Instr (Asm _) -> 
