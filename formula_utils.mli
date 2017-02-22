@@ -2,14 +2,22 @@ open Caretast
 open Formula_datatype
 open Atoms
 (** Correspond to a kind of state. We need it to assciate atoms to states *)
-(*
-(** Checks if an atom correspond to the wanted state kind 
-    (Call atom <-> SCall) *)
-val isGoodAtom : atom -> state_kind -> bool
-*)
 
 exception Unsatisfiable_formula
 
+(** 1. SMT solver query of Cil predicates *)
+
+exception Smt_query_failure
+
+type smt_answer = 
+| Sat 
+| Unsat 
+| Unknown
+
+
+val z3_answer : Cil_types.predicate -> Cil_types.logic_var list -> smt_answer
+
+(** 2. CaFE Formula utils  *)
 val spurious_stmt_hashtbl : Id_Formula.Set.t Cil_datatype.Stmt.Hashtbl.t
 
 (** Formula utilities *)

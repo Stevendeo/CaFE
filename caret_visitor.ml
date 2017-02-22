@@ -792,11 +792,11 @@ let createTransTo closure r_mod kf actual_stmt =
    let modificationTest pre_state post_state = 
      match post_state.s_stmt.skind with
      
-       Instr (Set ((Var var,_),_,_)) -> 
+       (*Instr (Set ((Var var,_),_,_)) -> 
 	 noSideEffectNextReq 
 	   ~var 
 	   pre_state.s_atom
-	   post_state.s_atom
+	   post_state.s_atom true*)
      | Instr (Set _) -> true
      | Instr (Call (Some _,_,_,_)) -> true 
      | Instr (Call (None,{enode = Lval (Var v, _)},_,_)) -> 

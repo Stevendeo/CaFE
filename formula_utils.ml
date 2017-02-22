@@ -9,6 +9,8 @@ open Cil
     rgba paths *)
 
 exception Unsatisfiable_formula
+exception Smt_query_failure
+
 module Fid = State_builder.SharedCounter(struct let name = "fid_counter" end)
 
 let (spurious_stmt_hashtbl: Id_Formula.Set.t Cil_datatype.Stmt.Hashtbl.t)
@@ -23,6 +25,139 @@ let dkey_consist = Caret_option.register_category "formula_utils_cons"
 
 let dkey_next = Caret_option.register_category "formula_utils:nextReq"
 let dkey_sid_eff = Caret_option.register_category "formula_utils:noSideEffect"
+let dkey_z3 = Caret_option.register_category "formula_utils:z3"
+
+(** 1. Predicate to smt solver z3 *)
+
+let read_file chan =
+  let lines = ref [] in
+  try
+    while true; do
+      lines := input_line chan :: !lines
+    done; 
+    List.fold_right
+      (fun str acc -> acc ^ str ^ "\n") 
+      !lines 
+      ""
+  with End_of_file ->
+    List.fold_right
+      (fun str acc -> acc ^ str ^ "\n") 
+      !lines ""
+
+type smt_answer = 
+| Sat 
+| Unsat 
+| Unknown
+     
+
+let smt_query smt_solver options query = 
+  
+    let prefix_command = 
+      List.fold_left
+	(fun acc option -> 
+	  acc  ^ " -" ^ option)
+	smt_solver
+	options 
+    in
+    
+    let query_file = "__" ^ smt_solver ^ "_query.smt"
+    in
+    
+    let answer_file = "__" ^ smt_solver ^ "_ans.txt"
+    in
+    
+    let query_out = open_out query_file
+    in
+    let () = 
+      Printf.fprintf query_out "%s\n" query;
+      close_out query_out
+    in
+    
+    let smt_command = 
+      prefix_command  ^ " " ^ query_file  ^ " > "  ^  answer_file in
+    
+    if Sys.command smt_command <> 0
+    then
+      let () = 
+	Caret_option.feedback "Command line %s failed" smt_command in 
+      raise Smt_query_failure 
+    else
+      let file = open_in answer_file in
+      let result = read_file file in 
+      let () = close_in file in
+      result
+
+let z3_answer p vars = 
+
+  let nlsat_query = 
+    Pred_printer.predicate_to_smt_query p "qfnra-nlsat"
+  in
+  
+  let basic_query = 
+    Pred_printer.predicate_to_smt_query p ""
+  in
+  let q_with_model q = 
+    List.fold_left
+      (fun acc lvar ->  
+	acc ^ "\n(get-value (" ^ lvar.Cil_types.lv_name ^"))")
+      q
+      vars
+  in
+
+
+    let res = (smt_query "z3" ["smt2"]  basic_query)
+    in
+    match String.lowercase_ascii (String.sub res 0 3) with
+      "sat" -> begin
+	let () = 
+	  Caret_option.debug ~dkey:dkey_z3 
+	    "%s!"
+	    res
+	in
+	  
+        Sat
+      end
+    | "uns" -> Unsat
+    | "unk" ->  
+      begin
+	let () = 
+	  Caret_option.feedback
+	    "Can't say if satisfiable : trying a different option";
+	 
+	    Caret_option.debug ~dkey:dkey_z3 
+	      "%s"
+	      res
+	in 
+	let next_res = (smt_query "z3" ["smt2"] nlsat_query)
+	in
+	match String.lowercase_ascii (String.sub next_res 0 3) with
+	  
+	  "sat" ->
+	    Caret_option.debug ~dkey:dkey_z3 
+	      "%s"
+	      next_res ; Sat
+	
+	| "uns" -> Unsat
+	| "unk" -> 
+	  let () = 
+	    Caret_option.feedback "Can't say if satisfiable" ; 
+	    try
+	      let model = (smt_query "z3" ["smt2"] (q_with_model nlsat_query))
+	      in
+	      
+	      Caret_option.debug ~dkey:dkey_z3 
+		"%s"
+		model
+	    with
+	      _ -> ()
+	  in Unknown
+	| _ -> Caret_option.fatal "?? : %s" next_res
+      end
+    | _ -> Caret_option.fatal "? : %s" res
+
+  
+
+(** 2. CaFE formula utils *)
 
 let mkIdForm f = 
   {
@@ -123,9 +258,97 @@ let isConsistent stmt ?(after = true) kf atom =
     !Db.Value.Logic.eval_predicate 
       (Db.Value.get_initial_state kf) 
       state 
-      pred.Cil_types.ip_content
+      pred
   in
 
+  let annot_pred = 
+      List.fold_left
+	(fun (acc:Cil_types.predicate) annot ->
+	  match annot.Cil_types.annot_content with
+	    Cil_types.AInvariant (_,_,pred) -> 
+	      let () = 
+		Caret_option.debug ~dkey:dkey_consist ~level:3
+		  "Is annotation %a true ?"
+		  Printer.pp_predicate pred in
+
+	      let status = Property_status.get 
+		(Property.ip_of_code_annot_single kf stmt annot) 
+	      in 
+	      let is_true () = 
+		  begin 
+		    match status with
+		      Property_status.Best (Property_status.True,_) -> 
+			let () = 
+			  Caret_option.debug ~dkey:dkey_consist ~level:4
+			    "Yes !" in true
+		    | Property_status.Best _ -> 
+		  let () = 
+		    Caret_option.debug ~dkey:dkey_consist ~level:4
+		      "No !" in false
+	      | Property_status.Never_tried -> 
+		Caret_option.debug ~dkey:dkey_consist ~level:4
+		  "Never tried to prove it"; false
+	      | Property_status.Inconsistent _ -> 
+		Caret_option.debug ~dkey:dkey_consist ~level:4
+		  "Inconsistent"; false
+	      end 
+	      in
+	      if Caret_option.Assert_annot.get () || is_true () then 
+		let () = 
+		  Caret_option.debug ~dkey:dkey_consist ~level:4
+		    "True or asserted"
+		in 
+		if acc.Cil_types.pred_content = Cil_types.Ptrue 
+		then pred
+		else Logic_const.unamed (Cil_types.Pand (acc,pred)) 
+	      else	
+		let () = 
+		  Caret_option.debug ~dkey:dkey_consist ~level:4
+		    "False"
+		in 
+		acc
+	      
+	  | _ -> acc
+	)
+	(Logic_const.unamed Cil_types.Ptrue)
+	(Annotations.code_annot stmt)
+  in
+  let rec pred_of_form f =
+    match f with
+      CProp (pred,_) -> pred.Cil_types.ip_content
+    | CNot p -> Logic_const.unamed (Cil_types.Pnot (pred_of_form p))
+    | CTrue ->  Logic_const.unamed Cil_types.Ptrue
+    | CFalse ->   Logic_const.unamed Cil_types.Pfalse
+    | _ -> Logic_const.unamed Cil_types.Ptrue
+  in 
+  let pred_of_atom_and_asserts = 
+    Id_Formula.Set.fold
+      (fun form acc -> 
+	Logic_const.unamed
+	  (Cil_types.Pand(
+	     acc,
+	     (pred_of_form form.form))
+	  )
+      )
+      (atomicProps atom)
+      annot_pred
+      
+  in
+  let res = 
+    eval_to_bool (eval_pred state pred_of_atom_and_asserts)
+    
+  in
+  let () = 
+    Caret_option.debug ~dkey:dkey_consist ~level:2
+      "Is %a possible ? Value says %b" 
+      Printer.pp_predicate pred_of_atom_and_asserts 
+      res in 
+
+  if not res then false 
+  else 
+    true
+    
+(*
   let treatForm f =
     let form = getFormula f in
     
@@ -172,9 +395,10 @@ let isConsistent stmt ?(after = true) kf atom =
 	  prop_stat <> Property_status.True
     | _ -> true
   in
+    
   Id_Formula.Set.for_all 
     treatForm
-    (getPropsFromAtom atom)
+    (atomicProps atom)*)
 
 let gen_next_hashtbl:(bool Atom.Hashtbl.t) Atom.Hashtbl.t = 
   Atom.Hashtbl.create 42
@@ -359,9 +583,6 @@ let noSideEffectNextReq ?var atom1 atom2 =
     res
   with
     Not_found -> 
-
-      
-	
       let res = 
 	match var with 
 	  None -> 

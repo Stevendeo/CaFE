@@ -10,6 +10,7 @@ module Pid = State_builder.SharedCounter
 let new_pid = Pid.next
 *)
 
+let dkey_loop = Caret_option.register_category "back_dataflow:loop"
 let dkey_stmt = Caret_option.register_category "back_dataflow:doStmt"
 let dkey_if = Caret_option.register_category "back_dataflow:if_cond"
 
@@ -197,10 +198,12 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  match stmt.skind with
 	    If (e,_,_,_) -> correct_term_from_exp e 
 
-    (*else 
+	  (*else 
       TBinop (LAnd,t,acc)
       (** TODO : HERE WE NEED TO COMPLETE THE MULTIPLE CONDITION  **)*)
-      | _ -> assert false
+	  | _ -> 
+	     
+	    assert false
 	in
 	match term.term_node with
 	  TBinOp(Eq,t1,t2) -> 
@@ -313,7 +316,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
     
   let combineStmtStartData s ~old newd =
     let () = 
-      Caret_option.debug ~level:2
+      Caret_option.debug ~dkey:dkey_stmt ~level:2
 	
 	"Statement %a :\n old = @[%a@]\npred = @[%a@] "
 	Printer.pp_stmt
@@ -326,23 +329,23 @@ let if_conds_as_pred (s : stmt list) : predicate =
     if Stmt.Set.mem s !treated_stmt 
     then 
       let () = 
-	Caret_option.debug ~level:2 "Statement already treated" in
+	Caret_option.debug ~dkey:dkey_stmt ~level:2 "Statement already treated" in
 	None
     else 
       let () = 
-	Caret_option.debug ~level:2 "Statement never treated" in
+	Caret_option.debug ~dkey:dkey_stmt ~level:2 "Statement never treated" in
       let () = treated_stmt := Stmt.Set.add s !treated_stmt
       in
       
       match s.skind with 
 	Loop _ ->
 	  let () = 
-	    Caret_option.debug ~level:4 "This is a loop" in
+	    Caret_option.debug ~dkey:dkey_stmt ~level:4 "This is a loop" in
 	  let p_old,_ = old
 	  in 
 	  let p_new,v_new = newd
 	  in
-	  
+	  (* TODO : ADD LOOP ANNOTATION !! *)
 	  let new_pred = 
 	    unamed (Pand(p_new, p_old))
 	  in
@@ -351,7 +354,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  in Some (new_pred,v_new) 
       | _ -> 
       let () = 
-	Caret_option.debug ~level:2 "This is not a loop, we keep the new predicate" in
+	Caret_option.debug ~dkey:dkey_stmt ~level:2 "This is not a loop, we keep the new predicate" in
      Some newd
 	
   let combineSuccessors ((succ1,vars1):t) ((succ2,vars2):t) :t = 
@@ -705,16 +708,50 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	(fun (acc:predicate) annot ->
 	  match annot.annot_content with
 	    AInvariant (_,_,pred) -> 
+	      let () = 
+		Caret_option.debug ~dkey:dkey_loop ~level:3
+		  "Is annotation %a true ?"
+		  Printer.pp_predicate pred in
+
 	      let status = Property_status.get 
 		(Property.ip_of_code_annot_single kf loop_stmt annot) 
-	      in begin 
-	      match status with
-		Property_status.Best (Property_status.True,_) -> 
-		  if acc.pred_content = Ptrue 
-		  then pred
-		  else unamed (Pand (acc,pred))
-	      | _ -> acc
+	      in 
+	      let is_true () = 
+		  begin 
+		    match status with
+		      Property_status.Best (Property_status.True,_) -> 
+			let () = 
+			  Caret_option.debug ~dkey:dkey_loop ~level:4
+			    "Yes !" in true
+		    | Property_status.Best _ -> 
+		  let () = 
+		    Caret_option.debug ~dkey:dkey_loop ~level:4
+		      "No !" in false
+	      | Property_status.Never_tried -> 
+		Caret_option.debug ~dkey:dkey_loop ~level:4
+		  "Never tried to prove it"; false
+	      | Property_status.Inconsistent _ -> 
+		Caret_option.debug ~dkey:dkey_loop ~level:4
+		  "Inconsistent"; false
 	      end 
+	      in
+	      if Caret_option.Assert_annot.get () || is_true () then 
+		let () = 
+		  Caret_option.debug ~dkey:dkey_loop ~level:4
+		    "True or asserted"
+		in 
+		if acc.pred_content = Ptrue 
+		then pred
+		else unamed (Pand (acc,pred)) 
+	      else	
+		let () = 
+		  Caret_option.debug ~dkey:dkey_loop ~level:4
+		    "False"
+		in 
+		acc
+	      
+	      
+
 	  | _ -> acc
 	)
 	(unamed Ptrue)
@@ -724,7 +761,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
     in
 
     let () = 
-      Caret_option.debug ~level:3
+      Caret_option.debug ~dkey:dkey_loop ~level:3
 	"Loop treatment done. Predicate : %a"
 	Printer.pp_predicate annot_pred
     in 
@@ -744,6 +781,8 @@ let if_conds_as_pred (s : stmt list) : predicate =
       in
       Done (StmtStartData.find s)
     else
+      
+	
       let find_prev_data s = 
 	let rec __find_prev_data (pred_acc, var_acc) succs = 
 	  try 
@@ -799,7 +838,13 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	    ~dkey:dkey_stmt 
 	    "Registered"
       in
-      
+      let actual_vars = 
+	Varinfo.Map.fold
+	  (fun _ lv acc -> lv :: acc)
+	  !var_map
+	  []
+      in
+      let data = 
       if Stmt.Hashtbl.mem if_stmt_hashtbl s || Stmt.Hashtbl.mem loop_hashtbl s
       then 
 	Done (prev_data,real_vars)
@@ -848,30 +893,24 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  let form = 
 	    Pand (unamed bind_prefix, unamed form) 
 	  in
-	  let actual_vars = 
-	    Varinfo.Map.fold
-	      (fun _ lv acc -> lv :: acc)
-	      !var_map
-	      []
-	  in
+
 	  Done (unamed form,actual_vars)
 	    
 	| Switch _ -> assert false
 	  
 	| Loop (_,b,_,_,so) -> 
-	  let if_stmt = 
-	    List.hd (Extlib.the so).succs
+	  let rec fst_if s = 
+	    match s.skind with
+	      If _ -> s
+	    | _ -> fst_if (List.hd s.succs)
+	  
 	  in
-	  (*let _,old_vars = 
-	    try
-	      CafeStartData.find (List.hd s.succs)
-	    with
-	      Not_found -> 
-		Caret_option.fatal
-		  "Loop head @[%a@] not registered"
-		  Printer.pp_stmt 
-		  s
-	  in*)
+	  let if_stmt = 
+	    (* Normally, the loop starts with the break condition. 
+	       But sometimes, a nasty statements is added in between. *)
+	    fst_if(List.hd (Extlib.the so).succs) 
+	  in
+	  
 	  let () = (* We compute the condition as a predicate just to visit the
 		      condition and register every varinfo in it. *)
 	    ignore (if_conds_as_pred [if_stmt])
@@ -885,12 +924,14 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  in*)
 	  
 	  let pred = loop_as_predicate (Kernel_function.find_englobing_kf s) s
-
+	  in
+	  let () = Caret_option.debug ~dkey:dkey_loop ~level:2
+	    "Predicate of loop : %a"
+	    Printer.pp_predicate pred in
 	(* pred represents at least one step of the loop. We
 	   need to specify the case "loop not taken".*)
 
 
-	in
 (*	let uniformize_pred = 
 	  uniformize 
 	    old_vars 
@@ -910,22 +951,27 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  Pnot (loop_cond)
 	in
 	
-	let rec update_block_vars b = 
-	  List.iter
-	    (fun s ->
+	let rec loop_assigns b = (* TODO : add annotation loop assign *)
+	  List.fold_right
+	    (fun s acc ->
 	      (*Caret_option.debug ~dkey:dkey_stmt ~level:3 
 		"Statement %a registered as treated" Printer.pp_stmt s;
 	      treated_stmt := Stmt.Set.add s !treated_stmt;
 	      StmtStartData.add s data;
 	      *)
 	      match s.skind with 
-		Block b -> update_block_vars b
-	      | Instr(Set ((Var v,_),_,_)) -> ignore (get_new_lvar v)
-	      | _ -> ()
-	    ) b.bstmts in
+		If (_,b1,b2,_) -> 
+		  Varinfo.Set.union (loop_assigns b1) (Varinfo.Set.union (loop_assigns b2) acc)
+	      | Block b -> Varinfo.Set.union (loop_assigns b) acc
+	      | Instr(Set ((Var v,_),_,_)) ->  Varinfo.Set.add v acc 
+	      | _ -> acc
+	    ) b.bstmts Varinfo.Set.empty in
 	
 
-	let () = update_block_vars b in
+	let () = 
+	  Varinfo.Set.iter
+	    (fun v -> ignore (get_new_lvar v))
+	    (loop_assigns b)  in
 
 
 	let data = 
@@ -941,15 +987,57 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		StmtStartData.add s data;
 		match s.skind with 
 		  Block b -> register_block_stmt b
+		| If(_,b1,b2,_) -> register_block_stmt b1;register_block_stmt b2
 		| _ -> ()
 	      ) b.bstmts in
 	
-	let () = (* register loop statement as treated *)
+	let () = (* register loop state ment as treated *)
 	    register_block_stmt b
 	in 
-	
-        
-	Done data
+        Done data
+      in 
+      let init_state = 
+	if (s.preds = [] && 
+	    (Kernel_function.equal 
+	       (Kernel_function.find_englobing_kf s)
+	       (!Parameter_builder.find_kf_by_name "main")
+	    )
+	)
+	  
+	then 
+	  let () =    
+	    Caret_option.debug ~dkey:dkey_stmt ~level:3
+	      "Initial state"
+	  in 
+	  Some (
+	    Cil.foldGlobals 
+	      (Ast.get ())
+	      (fun (acc : predicate) global -> 
+		match global with
+		  GVar (v,{init = Some (SingleInit e)},_) -> 
+		    let current_var = get_lvar v in 
+		    
+		    let var_status = correct_term_from_exp e 
+		    in
+		    let init_pred = 
+		    Prel (Req,(Logic_const.tvar current_var),var_status) |> unamed
+		    in
+		    if acc.pred_content = Ptrue then init_pred
+		    else 
+		      unamed (Pand (init_pred,acc))
+		| _ -> acc
+	      )
+	      (unamed Ptrue)
+	  )
+	  
+	else None in
+      
+      match data,init_state with
+	_,None -> data
+      | Done (pred,vars),Some p -> Done (unamed (Pand (pred,p)),vars)
+      | Default,Some p -> Done (unamed (Pand (prev_data,p)),vars)
+      | _ -> assert false
+      
 
   let doInstr _ i ((pred,vars):t) =
     match i with

@@ -8,6 +8,7 @@ module Auto_gen: Parameter_sig.Bool
 module Simplify: Parameter_sig.Int
 
 module Ignore_fun: Parameter_sig.String
+module Assert_annot : Parameter_sig.Bool
 
 module Create_res: Parameter_sig.Bool
 module Output_res: Parameter_sig.String
@@ -32,8 +33,6 @@ module Atom_simp: Parameter_sig.Bool
 module Call_print: Parameter_sig.Bool
 
 module Spurious: Parameter_sig.Bool
-
-module Ceana: Parameter_sig.Bool
 
 module Print_memo: Parameter_sig.Bool
 

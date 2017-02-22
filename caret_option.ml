@@ -61,6 +61,12 @@ module Ignore_fun = String
       "List of the functions ignored by the analysis"
    end)
 
+module Assert_annot = True
+  (struct
+    let option_name = "-cafe-assert"
+    let help = "when on (on by default), considers loop invariants as true"
+   end)
+
 module Output_dot = String
   (struct 
     let option_name = "-cafe-dot-output"
@@ -155,13 +161,6 @@ module Spurious = False
     struct
       let option_name = "-spurious"
       let help = "when on (off by default), prints the list of statement where formulas were found spurious"
-    end )
-
-module Ceana = False
-    (
-    struct
-      let option_name = "-ceana"
-      let help = "when on (on by default), applies a counter example analysis"
     end )
 
 module Print_memo = False

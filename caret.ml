@@ -92,16 +92,15 @@ let treatment file formula closure atoms =
     then
       let () = Caret_option.feedback "Acceptance analysis" in
       let () = 
-	try 
-	  Counter_example.testAcceptance rsm;
-	with
-	  Counter_example.Counter_example_failure -> 
-	    Caret_option.feedback "Post analysis canceled";
+	  Counter_example.testAcceptance rsm
       in
-      if RState.Set.is_empty
-	(RState.Set.filter
-	   (fun s -> (not s.deleted))
-	   rsm.start)
+      if RState.Set.exists
+	   (fun s -> 
+	     match s.s_stmt.Cil_types.skind with
+	       Cil_types.Return _ -> 
+		 (not s.deleted)
+	     | _ -> false)
+	   rsm.start
       then 
 	Caret_option.feedback "Every path has been deleted : no counter example found !"
       else 
