@@ -683,11 +683,11 @@ let simplifyAutomaton rsm =
   (* A state is not accessible if no transitions goes to it and is not callable
      (ie is not the beginning of a module). *)
   
-  let state_accessible = ref RState.Set.empty
-    
-  in
+  let state_accessible = ref RState.Set.empty in
 
   let useless_states = ref RState.Set.empty in
+
+  let useful_exits = ref RState.Set.empty in
 
   let pre state _ = 
     if not(RState.Set.mem state !state_accessible)
@@ -714,37 +714,49 @@ let simplifyAutomaton rsm =
   let post state box =
     let succs = getSuccs state box
     in
+    let is_exit = isExit state in
+    let () = 
+      if is_exit
+      then 
+	match box with
+	  None -> assert false (* No exit for main *)
+	| Some b -> 
+	  if not (RState.Set.is_empty (throughBox state b))
+	  then 
+	    useful_exits := RState.Set.add state !useful_exits
+    in
     let is_final_non_accept = (isFinal state) && (not (isAccepting rsm state)) and
 	is_dead_end = 
       (RState.Set.for_all 
 	 (fun succ -> RState.Set.mem succ !useless_states) 
 	 succs)  && not(isCall state)
     in
-    if not (isExit state) && (is_final_non_accept || is_dead_end) 
-    (* If it is an exit, it might have a successor by another box *) 
+    
+    if (not is_exit) && (is_final_non_accept || is_dead_end) 
+      (* If it is an exit, it might have a successor by another box *) 
     then 
       let () = 
 	Caret_option.debug 
 	  ~dkey 
-	  "%a is useless because of 1 : %b 2 %b"
-	  RState.pretty state 
-	  is_final_non_accept 
-	  is_dead_end;
-	
-	RState.Set.iter
-	  (fun state ->  
-	    Caret_option.debug ~dkey ~level:2 "Succ : %a\n" RState.pretty state) succs
+	    "%a is useless because of 1 : %b 2 %b"
+	    RState.pretty state 
+	    is_final_non_accept 
+	    is_dead_end;
 	  
-      in
-      useless_states := RState.Set.add state !useless_states
-	
-    else 
-      let () = 
-	Caret_option.debug 
-	  ~dkey 
-	  "%a is not useless because of 1 : %b 2 %b"
-	  RState.pretty state is_final_non_accept is_dead_end
-	  in
+	  RState.Set.iter
+	    (fun state ->  
+	      Caret_option.debug ~dkey ~level:2 "Succ : %a\n" RState.pretty state) succs
+	    
+	in
+	useless_states := RState.Set.add state !useless_states
+	  
+      else 
+	let () = 
+	  Caret_option.debug 
+	    ~dkey 
+	    "%a is not useless because of 1 : %b 2 %b"
+	    RState.pretty state is_final_non_accept is_dead_end
+	in
 	RState.Set.iter
 	  (fun state ->  
 	    Caret_option.debug ~dkey ~level:2 "Succ : %a\n" RState.pretty state) succs
@@ -770,8 +782,9 @@ let simplifyAutomaton rsm =
       RState.Set.iter
 	( fun state -> 
 	  if not(RState.Set.mem state !state_accessible)
-		||(RState.Set.mem state !useless_states)
-	  then deleteRState state
+	    ||(RState.Set.mem state !useless_states)
+	    ||(isExit state && not (RState.Set.mem state !useful_exits))
+	    then deleteRState state
 	)
 	r_mod.states
     )
