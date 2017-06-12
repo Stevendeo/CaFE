@@ -1675,7 +1675,10 @@ object(self)
 	      addRStates cur_states ref_current_mod; 
 	      updateModStmtHashtbl ref_current_mod stmt cur_states;
               doChildrenPostWithTrans ()
-
+	    | Local_init _ -> 
+	      failwith "Local_init not supported in caret_visitor" 
+	  (* TODO *)
+    
 	  in
 	  match stmt.skind with
 	    Instr i -> 

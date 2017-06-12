@@ -5,7 +5,6 @@ open Formula_datatype
 open Caretast
 open Cil
 open Logic_const
-open Rsm
 open Formula_utils
 
 open Type_RState

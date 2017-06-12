@@ -1044,7 +1044,9 @@ let if_conds_as_pred (s : stmt list) : predicate =
       Call _ 
     | Asm _ 
     | Skip _ -> Default
-      
+    | Local_init _ -> failwith "Local_init not supported in back_dataflow" 
+    (* TODO *)
+    
     | Code_annot _ -> Default 
       (* todo : 
 	 - if proved, get results 

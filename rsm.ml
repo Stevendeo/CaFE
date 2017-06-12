@@ -3,7 +3,6 @@ open Formula_datatype
 open Atoms
 open Atoms_utils
 open Rsmast
-open Cil_types 
 
 open Type_RState
 open Type_Box
