@@ -94,6 +94,15 @@ let treatment file formula closure atoms =
       let () = 
 	  Counter_example.testAcceptance rsm
       in
+      if not (Caret_option.Main_ends.get ())
+      then 
+        let () = 
+          Caret_option.feedback 
+            "Program does not end, check the automaton (dot -Tpdf auto.dot > auto.pdf) to see if \
+             there is accepting paths.";
+          Caret_option.Output_dot.set "auto.dot" in
+        Caret_option.Dot.set true
+      else 
       if RState.Set.exists
 	   (fun s -> 
 	     match s.s_stmt.Cil_types.skind with
@@ -139,7 +148,6 @@ let treatment file formula closure atoms =
 	      end
 	    else
 	      Caret_print.string_rsm_infos rsm ;
-	    
 	  in
 
 	  output_fun chan_dot rsm_str;
