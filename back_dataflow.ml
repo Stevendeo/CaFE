@@ -1044,7 +1044,11 @@ let if_conds_as_pred (s : stmt list) : predicate =
       Call _ 
     | Asm _ 
     | Skip _ -> Default
-    | Local_init _ -> failwith "Local_init not supported in back_dataflow" 
+    | Local_init (v,AssignInit (SingleInit exp),_) -> 
+      let () = Caret_option.debug "Local_init : correcting the predicate" in
+      Done ((update_pred_about_var v exp pred.pred_content),vars)
+      
+    | Local_init _ -> failwith "Complex Local_init not supported in back_dataflow" 
     (* TODO *)
     
     | Code_annot _ -> Default 

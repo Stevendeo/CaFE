@@ -1140,7 +1140,8 @@ object(self)
       
       let treatInstr stmt i = 
 	match i with 
-	  Set _ -> 
+	  Set _ 
+	| Local_init (_,AssignInit (SingleInit _),_) ->  
 	    let () =  
 	      Caret_option.debug ~dkey:dkey_vis ~level:2
 		"Statement is a set."
@@ -1161,7 +1162,11 @@ object(self)
 	    
 	    updateModStmtHashtbl ref_current_mod stmt set_states;
 	    
-	    doChildrenPostWithTrans ()
+	    doChildrenPostWithTrans ()  
+	| Local_init _ -> 
+	  failwith "Functional Local_init not supported in caret_visitor" 
+	(* TODO *)
+    
 	| Call (_, expr, _, _) -> 
 	  let () =  
 	    Caret_option.debug ~dkey:dkey_vis ~level:2
@@ -1675,10 +1680,6 @@ object(self)
 	      addRStates cur_states ref_current_mod; 
 	      updateModStmtHashtbl ref_current_mod stmt cur_states;
               doChildrenPostWithTrans ()
-	    | Local_init _ -> 
-	      failwith "Local_init not supported in caret_visitor" 
-	  (* TODO *)
-    
 	  in
 	  match stmt.skind with
 	    Instr i -> 

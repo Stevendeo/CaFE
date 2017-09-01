@@ -23,7 +23,11 @@ type info =
       there is a set of states in which the said formula is true.
   *)
 
-(** 2. Definition of the types in temporary modules. *)
+(** 2. Definition of the types in temporary modules to remove incomprehensible warnings. *)
+module RState_Make_Input : sig end
+module Box_Make_Input : sig end
+
+(** 3. Module types of RSM structure *)
 
 module rec Type_RState : 
   (sig

@@ -1,5 +1,5 @@
-FRAMAC_SHARE 	:= $(shell frama-c.byte -print-path)
-FRAMAC_LIBDIR 	:= $(shell frama-c.byte -print-libpath)
+FRAMAC_SHARE 	:= $(shell frama-c-config -print-share-path)
+FRAMAC_LIBDIR 	?= $(shell frama-c -print-libpath)
 
 
 PLUGIN_DIR ?=.

@@ -226,7 +226,7 @@ let isConsistent stmt ?(after = true) kf atom =
 
   let state = 
     let is_instr = 
-      match stmt.Cil_types.skind with Cil_types.Instr _ -> true | _ -> false in
+      match stmt.Cil_types.skind with Cil_types.Instr _  -> true | _ -> false in
     
     if is_instr
     then
