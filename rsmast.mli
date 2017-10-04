@@ -118,11 +118,15 @@ and Type_Rsm_module:
 
 (** Definition of temporary structures used inside the previous types. *)
 
-and RState: (Datatype.S_with_collections with type t = Type_RState.t)
-
+and RState: 
+  sig 
+    include (Datatype.S_with_collections with type t = Type_RState.t)
+    val pretty_state_set : Format.formatter -> Set.t -> unit
+  end 
 and Box: 
   sig 
     include (Datatype.S_with_collections with type t = Type_Box.t)
+    val pretty_complete : Format.formatter -> t -> unit
   end
 and Rsm_module : Datatype.S_with_collections with type t = Type_Rsm_module.t
 (* module Box: Datatype.S_with_collections with type t = Type_Box.t

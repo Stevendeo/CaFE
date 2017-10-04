@@ -176,9 +176,18 @@ and RState_Make_Input:(Datatype.Make_input with type t = Type_RState.t) =
     let mem_project = Datatype.never_any_project
   end
 
-and RState:(Datatype.S_with_collections with type t = Type_RState.t) = 
-  Datatype.Make_with_collections (RState_Make_Input)
-
+and RState:
+  sig 
+    include (Datatype.S_with_collections with type t = Type_RState.t)
+    val pretty_state_set : Format.formatter -> Set.t -> unit  
+  end = 
+  struct 
+    include Datatype.Make_with_collections (RState_Make_Input)
+    let pretty_state_set fmt s = 
+      Set.iter
+        (fun s -> Format.fprintf fmt "%a" pretty s)
+        s
+  end
 and Ext_state : sig 
   type t = 
     State of RState.t
@@ -276,10 +285,32 @@ struct
 
 end
   
-and Box : (Datatype.S_with_collections with type t = Type_Box.t)
+and Box :
+sig 
+    include (Datatype.S_with_collections with type t = Type_Box.t)
+    val pretty_complete : Format.formatter -> t -> unit
+  end
   =
   struct 
     include Datatype.Make_with_collections (Box_Make_Input)
+
+    let pretty_state_map fmt s = 
+      RState.Map.iter
+        (fun s1 s2 -> Format.fprintf fmt "%a -> %a" RState.pretty s1 RState.pretty_state_set s2)
+        s
+
+
+    let pretty_complete fmt (box:t) =
+      Format.fprintf fmt
+        "Box %a_%d\n\
+         Atom: %a\n\n\
+         Entries: %a\n\n\
+         Exits:%a\n\n"
+        pretty box box.Type_Box.b_id
+        Atoms.Atom.pretty box.Type_Box.box_atom
+        pretty_state_map box.Type_Box.b_entries
+        pretty_state_map box.Type_Box.b_exits
+
   end
 and Type_Rsm_module: 
   sig 

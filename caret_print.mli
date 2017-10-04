@@ -1,35 +1,10 @@
 open Rsmast
-open Caretast
-open Atoms
-(** Prints simple informations about a statement *)
-val string_stmt : Cil_types.stmt -> string
 
-(** Prints the formula *)
-val string_formula : caret_formula -> string
+val print_rsm_complete_state_info : Format.formatter -> rsm -> unit
 
-(** Prints the identified formula *)
-val string_id_formula : identified_formula -> string
+val print_rsm_simple_info : Format.formatter -> rsm -> unit
 
-(** Prints a raw atom *)
-val string_raw_atom : raw_atom -> string
+val print_path : Format.formatter -> state list -> unit
 
-(** Prints an atom *)
-val string_atom : atom -> string
-
-val simple_state : state -> string
-
-val string_path : state list -> string
-
-(** Returns the atomic properties verified within the state *)
-val string_state_config : state -> string
-
-val string_box : box -> string
-
-(** Prints the rsm in argument (dot standard)  *)
+(** Returns the string corresponding to the dot representation of the rsm  *)
 val string_rsm : ?cex:Rsmast.RState.Set.t -> rsm -> string
-
-(** Prints minimal informations about the automaton in argument.  *)
-val string_rsm_infos : rsm -> string
-
-(** Returns a string understandable by CVC from the predicate in argument *)
-val pred_to_cvc : Cil_types.predicate -> string

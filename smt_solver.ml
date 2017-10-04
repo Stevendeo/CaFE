@@ -1,9 +1,29 @@
 open Formula_datatype
 open Cil_types
-open Caretast
+open Cil_datatype
+open Cil
 (** Translates a Set of predicate into a cvc3 formula *)
 
 let dkey = Caret_option.register_category "smt_solv"
+let dkey_z3 = Caret_option.register_category "formula_utils:z3"
+
+
+let read_file chan =
+  let lines = ref [] in
+  try
+    while true; do
+      lines := input_line chan :: !lines
+    done; 
+    List.fold_right
+      (fun str acc -> acc ^ str ^ "\n") 
+      !lines 
+      ""
+  with End_of_file ->
+    List.fold_right
+      (fun str acc -> acc ^ str ^ "\n") 
+      !lines ""
+
+exception Smt_query_failure
 
 let string_typ = function 
   | TInt _ -> "TFloat"
@@ -57,7 +77,14 @@ let cvcParser set =
 	)
         main_vars      
   in 
-  "prop: BOOLEAN = EXISTS\\(__cafe_tmp__:INT" ^ cvc_prefix  ^ "\\):" ^
+  Format.fprintf 
+    Format.str_formatter
+    "prop: BOOLEAN = EXISTS\\__cafe_tmp__:INT %s \\):%a AND __cafe_tmp__ = 0 \\; CHECKSAT prop\\;"
+    cvc_prefix 
+    (Format.pp_print_list Id_Formula.pretty) (Id_Formula.Set.elements set)
+    ;
+    Format.flush_str_formatter ()
+(*"prop: BOOLEAN = EXISTS\\(__cafe_tmp__:INT" ^ cvc_prefix  ^ "\\):" ^
     (
       Id_Formula.Set.fold 
 	(fun itm acc -> 
@@ -65,7 +92,7 @@ let cvcParser set =
 	set
 	"__cafe_tmp__ = 0\\; CHECKSAT prop\\;"
       )
-  
+  *)
       
 let cvcTest set = 
   let str_formula = cvcParser set in
@@ -90,3 +117,146 @@ let cvcTest set =
       let () = close_in file in
       result.[0] <> 'U'(* Unsatisfiable *)
      	 
+
+type smt_answer = 
+| Sat 
+| Unsat 
+| Unknown
+     
+
+let smt_query smt_solver options query = 
+  
+    let prefix_command = 
+      List.fold_left
+	(fun acc option -> 
+	  acc  ^ " -" ^ option)
+	smt_solver
+	options 
+    in
+    
+    let query_file = "__" ^ smt_solver ^ "_query.smt"
+    in
+    
+    let answer_file = "__" ^ smt_solver ^ "_ans.txt"
+    in
+    
+    let query_out = open_out query_file
+    in
+    let () = 
+      Printf.fprintf query_out "%s\n" query;
+      close_out query_out
+    in
+    
+    let smt_command = 
+      prefix_command  ^ " " ^ query_file  ^ " > "  ^  answer_file in
+    
+    if Sys.command smt_command <> 0
+    then
+      let () = 
+	Caret_option.feedback "Command line %s failed" smt_command in 
+      raise Smt_query_failure 
+    else
+      let file = open_in answer_file in
+      let result = read_file file in 
+      let () = close_in file in
+      result
+
+let z3_answer ?(vars = []) p = 
+
+  let vars = 
+    if vars <> []
+    then vars
+    else (* We visit the predicate and register every logic variable *)
+      let lvars = ref Logic_var.Set.empty in
+      let lvar_vis = 
+        object
+	  inherit Visitor.frama_c_inplace
+	  method! vlogic_var_use lv = 
+	    lvars := Logic_var.Set.add lv !lvars; Cil.DoChildren
+	end
+    
+      in
+      ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) p);
+      Logic_var.Set.elements !lvars 
+  in
+  let nlsat_query = 
+    Pred_printer.predicate_to_smt_query p "qfnra-nlsat"
+  in
+  
+  let basic_query = 
+    Pred_printer.predicate_to_smt_query p ""
+  in
+  let q_with_model q = 
+    List.fold_left
+      (fun acc lvar ->  
+	acc ^ "\n(get-value (" ^ lvar.Cil_types.lv_name ^"))")
+      q
+      vars
+  in
+
+
+    let res = (smt_query "z3" ["smt2"]  basic_query)
+    in
+    match String.lowercase_ascii (String.sub res 0 3) with
+      "sat" -> begin
+	let () = 
+	  Caret_option.debug ~dkey:dkey_z3 
+	    "%s!"
+	    res
+	in
+	  
+        Sat
+      end
+    | "uns" -> Unsat
+    | "unk" ->  
+      begin
+	let () = 
+	  Caret_option.feedback
+	    "Can't say if satisfiable : trying a different option";
+	 
+	    Caret_option.debug ~dkey:dkey_z3 
+	      "%s"
+	      res
+	in 
+	let next_res = (smt_query "z3" ["smt2"] nlsat_query)
+	in
+	match String.lowercase_ascii (String.sub next_res 0 3) with
+	  
+	  "sat" ->
+	    Caret_option.debug ~dkey:dkey_z3 
+	      "%s"
+	      next_res ; Sat
+	
+	| "uns" -> Unsat
+	| "unk" -> 
+	  let () = 
+	    Caret_option.feedback "Can't say if satisfiable" ; 
+	    try
+	      let model = (smt_query "z3" ["smt2"] (q_with_model nlsat_query))
+	      in
+	      
+	      Caret_option.debug ~dkey:dkey_z3 
+		"%s"
+		model
+	    with
+	      _ -> ()
+	  in Unknown
+	| _ -> Caret_option.fatal "?? : %s" next_res
+      end
+    | _ -> Caret_option.fatal "? : %s" res
+
+let pred_mem lvar pred = 
+  let lvar_vis = 
+object
+  inherit Visitor.frama_c_inplace
+  method! vlogic_var_use lv = 
+    if Logic_var.equal lv lvar
+    then 
+      let () = failwith "true" in SkipChildren
+    else DoChildren
+end
+  in
+  try ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) pred);false
+  with 
+    Failure s -> if s = "true" then true else failwith s
+      

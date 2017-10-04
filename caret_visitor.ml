@@ -22,6 +22,13 @@ let dkey = Caret_option.register_category "caret_vis:module"
 let dkey_vis = dkey
 let dkey_trans = Caret_option.register_category "caret_vis:trans"
 
+let hash_printer fmt = 
+  Stmt.Hashtbl.iter
+    (fun stmt _ ->
+       Format.fprintf fmt "-> %a\n"
+         Printer.pp_stmt stmt)
+    
+
 let ignored_functions = ref []
 
 let compute_ignored_functions () = 
@@ -70,11 +77,10 @@ let mkRStateSetFromStmt name stmt kf r_mod atoms =
 	if test atom
 	then
 	  let () = 
-	  Caret_option.debug ~dkey ~level:1
-	    "Atom %s accepted in stmt %s"
-	    (Caret_print.string_atom atom)
-	    (Caret_print.string_stmt stmt)
-
+            Caret_option.debug ~dkey ~level:1
+              "Atom %a accepted in stmt %a"
+              Atom.pretty atom
+              Printer.pp_stmt stmt
 	  in
 	  RState.Set.add
 	    (mkRState 
@@ -87,11 +93,10 @@ let mkRStateSetFromStmt name stmt kf r_mod atoms =
 	    acc
 	else
 	  let () = 
-	  Caret_option.debug ~dkey ~level:1
-	    "Atom %s not accepted in stmt %s"
-	    (Caret_print.string_atom atom)
-	    (Caret_print.string_stmt stmt)
-
+            Caret_option.debug ~dkey ~level:1
+              "Atom %a not accepted in stmt %a"
+              Atom.pretty atom
+              Printer.pp_stmt stmt
 	  in
 	  acc )
       
@@ -152,9 +157,9 @@ let updateModStmtHashtbl r_mod stmt s_set =
     try 
       let () = 
 	Caret_option.debug ~dkey:dkey_vis ~level:2
-	  "Registering %s in mod %s" 
-	  (Caret_print.string_stmt stmt)
-	  (Rsm_module.varname r_mod)
+	  "Registering %a in mod %a" 
+	  Printer.pp_stmt stmt
+	  Rsm_module.pretty r_mod
       in
 	Stmt.Hashtbl.add 
 	(Rsm_module.Hashtbl.find mod_stmt_states_hashtbl r_mod)
@@ -269,16 +274,16 @@ object(self)
 			    Caret_option.debug
 			      ~dkey
 			      ~level:2
-			      "%s is a start"
-			      (Caret_print.simple_state new_state_inf)
+			      "%a is a start"
+			      RState.pretty new_state_inf
 			  in setStart new_state_inf rsm
 			  
 			else
 			  Caret_option.debug
 			    ~dkey
 			    ~level:2
-			    "%s is not a start : %b"
-			    (Caret_print.simple_state new_state_inf)
+			    "%a is not a start : %b"
+			    RState.pretty new_state_inf
 			    (formInAtom formula atom)
 		      in
 		      new_state_inf::acc
@@ -391,8 +396,8 @@ let createTransTo closure r_mod kf actual_stmt =
     let () = 
       Caret_option.debug 
 	~dkey:dkey_trans 
-	"Computation of transitions for states with statement %s" 
-	(Caret_print.string_stmt actual_stmt) in
+	"Computation of transitions for states with statement %a" 
+	Printer.pp_stmt actual_stmt in
     let stmt_hshtbl = 
       try
 	Rsm_module.Hashtbl.find mod_stmt_states_hashtbl r_mod
@@ -420,28 +425,16 @@ let createTransTo closure r_mod kf actual_stmt =
 	  fst (Stmt.Hashtbl.find stmt_call_ret_hashtbl actual_stmt)
 	with
 	  Not_found -> 
-	    
-	    let str_stmt_list = 
-	      Stmt.Hashtbl.fold
-		(fun stmt _ acc -> 
-		  "-->\n" ^(Caret_print.string_stmt stmt)^ "\n" ^ acc)
-		stmt_call_ret_hashtbl
-		""
-	    in
-	    let str_stmt_list = 
-	      Stmt.Hashtbl.fold
-		(fun stmt _ acc -> 
-		  "->\n" ^(Caret_print.string_stmt stmt)^ "\n\n" ^ acc )
-		stmt_hshtbl
-		str_stmt_list
-	    in
+            
 	    Caret_option.debug ~dkey
-	      "Statement seeked : %s\n Statements registered : %s"
-	      (Caret_print.string_stmt actual_stmt)
-	      str_stmt_list;
+	      "Statement seeked : %a\n Statements registered : \nCALL_RET: %a \n STMTS: %a"
+	      Printer.pp_stmt actual_stmt
+	      hash_printer stmt_call_ret_hashtbl 
+              hash_printer stmt_hshtbl;
 	    
 	    Caret_option.fatal ~dkey
-	      "Call/Ret Statement not registered. Don't forget to add the actual statement to the hashtable before creating the transitions"
+	      "Call/Ret Statement not registered. Don't forget to add the actual statement\
+               to the hashtable before creating the transitions"
     in
 
     let isFirstStmt stmt = 
@@ -468,8 +461,8 @@ let createTransTo closure r_mod kf actual_stmt =
 	    let () = 
 	      Caret_option.debug
 		~dkey:dkey_trans
-		"Previous statement : %s "
-		(Caret_print.string_stmt prev_stmt) in
+		"Previous statement : %a"
+		Printer.pp_stmt prev_stmt in
 	    (* We need to test if a statement is accessible from a If stmt. For 
 	       example, x=0; if (!x){f();} g(); -> g is not accessible directly
 	       from the If stmt. *)
@@ -525,10 +518,9 @@ let createTransTo closure r_mod kf actual_stmt =
 			in let () = 
 			     Caret_option.debug
 			       ~dkey:dkey_trans
-			       "But it is in the call_ret hashtbl. Example : %s"
-			       (Caret_print.simple_state 
-				  (RState.Set.choose res)
-			       )
+			       "But it is in the call_ret hashtbl. Example : %a"
+			       RState.pretty (RState.Set.choose res)
+			       
 			   in res
 		      with
 			Not_found -> 
@@ -537,29 +529,14 @@ let createTransTo closure r_mod kf actual_stmt =
 			  then RState.Set.empty
 			  else 
 				begin
-				  let str_stmt_list = 
-				    Stmt.Hashtbl.fold
-				      (fun stmt _ acc -> 
-					"->\n" ^
-					  (Caret_print.string_stmt stmt)^
-					  (string_of_int stmt.sid)^"\n\n" ^ acc )
-				      stmt_hshtbl
-				      ""
-				  in
-				  let str_stmt_list = 
-				    Stmt.Hashtbl.fold
-				      (fun stmt _ acc -> 
-				    "-->\n" ^ 
-				      (Caret_print.string_stmt stmt)^
-				      (string_of_int stmt.sid)^"\n\n" ^ acc)
-				      stmt_call_ret_hashtbl
-				      str_stmt_list
-				  in
+        
 				  Caret_option.debug ~dkey:dkey_trans
-				    "Statement seeked : %s with id %d \n Statements registered : %s"				
-				    (Caret_print.string_stmt prev_stmt)
+                                    "Statement seeked : %a with id %d \n\
+                                     Statements registered : %a\n %a"				
+	                            Printer.pp_stmt prev_stmt
 				    prev_stmt.sid
-				    str_stmt_list;
+				    hash_printer stmt_hshtbl
+                                    hash_printer stmt_call_ret_hashtbl;
 				  raise (Not_Treated_Prev (r_mod, kf ,actual_stmt))
 				    
 				end
@@ -597,10 +574,10 @@ let createTransTo closure r_mod kf actual_stmt =
    let nodeToNodeTest prev_state state = 
       Caret_option.debug 
 	~dkey:dkey_trans ~level:2
-	"Test nodeToNode : \n %s \n to %s ?"
-	(Caret_print.string_atom prev_state.s_atom)
-	(Caret_print.string_atom state.s_atom);
-     
+	"Test nodeToNode : \n %a \n to %a ?"
+        Atom.pretty prev_state.s_atom
+        Atom.pretty state.s_atom;
+
       let atom_prev = prev_state.s_atom in (* A *)
       let info_prev = prev_state.s_info in (* t *)
       
@@ -803,7 +780,7 @@ let createTransTo closure r_mod kf actual_stmt =
 	 Id_Formula.Set.exists
 	   (fun p -> 
 	     match p.form with
-	       CProp (p,_) -> Formula_utils.pred_mem lvar p.ip_content
+	       CProp (p,_) -> Smt_solver.pred_mem lvar p.ip_content
 	     | _ -> false
 	   )
        in (* if both atoms uses the value of var, then the atoms should be no side effect
@@ -853,9 +830,9 @@ let createTransTo closure r_mod kf actual_stmt =
      let () = 
        Caret_option.debug 
 	 ~dkey:dkey_trans
-	 "link %i states\nto %s:%i states"
+	 "link %i states\nto %a:%i states"
 	 (RState.Set.cardinal start_set)
-	 (Caret_print.string_stmt (RState.Set.choose next_set).s_stmt)
+	 Printer.pp_stmt (RState.Set.choose next_set).s_stmt
 	 (RState.Set.cardinal next_set)
      in
      
@@ -865,20 +842,20 @@ let createTransTo closure r_mod kf actual_stmt =
 	   Caret_option.debug 
 	     ~dkey:dkey_trans
 	     ~level:1
-	     "%s : test with %i states"
-	     (Caret_print.simple_state start_state)
+	     "%a : test with %i states"
+	     RState.pretty start_state
 	     (RState.Set.cardinal next_set)
 	 in
 	 RState.Set.iter
 	   (fun next_state -> 
 	     Caret_option.debug 
 	       ~dkey:dkey_trans ~level:2
-	       "Test of :\n%s\nWith atom :\n %s\n-> %s\n with atom n%s :"
-	       (Caret_print.simple_state start_state)
-	       (Caret_print.string_atom start_state.s_atom)
-	       (Caret_print.simple_state next_state)
-	       (Caret_print.string_atom next_state.s_atom)
-	      ;
+	       "Test of :\n%a\nWith atom :\n %a\n-> %a\n with atom n%a :"
+	       
+               RState.pretty start_state
+               Atom.pretty start_state.s_atom
+	       RState.pretty next_state
+               Atom.pretty next_state.s_atom;
 	     
 	     if 
 	       (not (modificationTest start_state next_state))
@@ -886,8 +863,7 @@ let createTransTo closure r_mod kf actual_stmt =
 	     then
 	       Caret_option.debug 
 		 ~dkey:dkey_trans ~level:2
-		 "Fail as there is no modification but the %s"
-		 "atomic properties are different"
+		 "Fail as there is no modification but the atomic properties are differents"
 	     else
 	      if (goodTest start_state next_state) 
 	      then begin
@@ -975,8 +951,8 @@ let createTransTo closure r_mod kf actual_stmt =
     
     Caret_option.debug 
       ~dkey:dkey_trans ~level:2
-      "Computing transitions for statement %s" 
-      (Caret_print.string_stmt actual_stmt);
+      "Computing transitions for statement %a" 
+      Printer.pp_stmt actual_stmt;
     let () = 
       List.iter
 	
@@ -1002,47 +978,43 @@ let createTransTo closure r_mod kf actual_stmt =
 	    begin
 	    Caret_option.debug 
 	      ~dkey:dkey_trans
-	      "Statement %s is the end of a function" 
-	      (Caret_print.string_stmt actual_stmt);
+	      "Statement %a is the end of a function" 
+	      Printer.pp_stmt actual_stmt;
 	      treatRet prev_is_ret prev_states
 	    end
 	  else
 	    begin
 	      Caret_option.debug 
 	      ~dkey:dkey_trans
-	      "Statement %s is not the end of a function"
-	      (Caret_print.string_stmt actual_stmt);
+	      "Statement %a is not the end of a function"
+               Printer.pp_stmt actual_stmt;
 
 	      Caret_option.debug 
 	      ~dkey:dkey_trans
-	      "Succs :\n%s"
-	      (List.fold_left
-		(fun acc stmt-> acc ^ "\n" ^ (Caret_print.string_stmt stmt))
-		  ""
-		  actual_stmt.succs
-	      ); 
+	      "Succs :\n%a"
+              (Format.pp_print_list Printer.pp_stmt) actual_stmt.succs;
 	      
 	    match actual_stmt.skind with
 	    
 	    Instr ( Cil_types.Call _ ) -> 
 	      Caret_option.debug 
 		~dkey:dkey_trans
-		"Statement %s is a Call" 
-		(Caret_print.string_stmt actual_stmt);
+		"Statement %a is a Call" 
+		Printer.pp_stmt actual_stmt;
 	      treatCall prev_is_ret prev_states	    
 		
 	  | Return _ -> 
 	      Caret_option.debug 
 		~dkey:dkey_trans 
-		"Statement %s is a Return" 
-		(Caret_print.string_stmt actual_stmt);
+		"Statement %a is a Return" 
+		Printer.pp_stmt actual_stmt;
 	    treatRet prev_is_ret prev_states
 	      
 	  | _ -> 
 	    Caret_option.debug 
 	      ~dkey:dkey_trans
-	      "Statement %s is not a Call nor a Return" 
-	      (Caret_print.string_stmt actual_stmt);
+	      "Statement %a is not a Call nor a Return" 
+              Printer.pp_stmt actual_stmt;
 	    treatNormal prev_is_ret prev_states
 	      
 	    end
@@ -1059,8 +1031,8 @@ object(self)
     
     let () =  
       Caret_option.debug ~dkey:dkey_vis
-	"Statement treated : %s with id %d"
-	(Caret_print.string_stmt stmt)
+	"Statement treated : %a with id %d"
+	Printer.pp_stmt stmt
 	stmt.sid
     in
   
@@ -1691,8 +1663,8 @@ object(self)
 		  Func_not_found -> 
 		    let () = 
 		      Caret_option.feedback
-			"The statement %s doesn't call any function, maybe a function pointer uninitialized."
-			(Caret_print.string_stmt stmt);
+			"The statement %a doesn't call any function, maybe a function pointer uninitialized."
+			Printer.pp_stmt stmt;
 		      updateModStmtHashtbl ref_current_mod stmt RState.Set.empty
 		    in
 		    
@@ -1816,8 +1788,8 @@ let compute_rsm file formula closure atoms =
 	    Not_Treated_Prev _ ->
 	      Caret_option.debug
 		~dkey:dkey_vis
-		"Statement --> \n%s \n <-- not registered."
-		(Caret_print.string_stmt c)
+		"Statement --> \n%a \n <-- not registered."
+		Printer.pp_stmt c
 	)
 	!todo_states
 

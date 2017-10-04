@@ -70,10 +70,90 @@ module Caret_Formula =
 	(stringOf formula)
 	  
 	  
-      let pretty fmt p = 
-	match p with
-	  CProp (p,_) -> Cil_datatype.Identified_predicate.pretty fmt p
-	| _ -> Format.fprintf fmt "%s" (varname p)
+      let pretty fmt p =   
+        let printOpKind = function
+          | General -> "N "
+          | Abstract -> "A "
+          | Past -> "P "
+        in
+        let printInfo = function
+          | ICall (Some s) -> "Call_" ^ s 
+          | ICall _ -> "Call"
+          | IRet (Some s) -> "Ret_" ^ s
+          | IRet _ -> "Ret"
+          |Caretast.IInt  -> "Int"
+        in
+        let rec printer fmt = 
+          function
+          | CNext (op,f) -> 
+            Format.fprintf  fmt
+              "X%s (%a)"
+              (printOpKind op)
+              printer f
+              
+          | CUntil  (op, f1 ,f2) -> 
+            Format.fprintf  fmt
+              "(%a) U%s (%a)"
+              printer f1
+              (printOpKind op)
+              printer f2
+              
+          | CFatally (op,f) -> 
+            Format.fprintf  fmt
+              "F%s (%a)" 
+              (printOpKind op) 
+              printer f
+              
+          | CGlobally(op,f) ->
+            Format.fprintf  fmt
+              "G%s (%a)" 
+              (printOpKind op) 
+              printer f
+              
+          | CNot f -> 
+            Format.fprintf  fmt
+              "NOT(%a)" 
+              printer f
+              
+          | CAnd (f1 ,f2) ->
+            Format.fprintf  fmt
+              "(%a) & (%a)"
+              printer f1
+              printer f2
+              
+          | COr (f1, f2)-> 
+            Format.fprintf  fmt
+              "(%a) | (%a)"
+              printer f1
+              printer f2
+              
+          | CImplies (f1, f2)-> 
+            Format.fprintf  fmt
+              "(%a) => (%a)"
+              printer f1
+              printer f2
+              
+          | CIff (f1, f2)-> 
+            Format.fprintf fmt
+              "(%a) <=> (%a)"
+              printer f1
+              printer f2
+              
+          | CTrue -> 
+            Format.fprintf  fmt
+              "TRUE"
+          | CFalse -> 
+            Format.fprintf  fmt
+              "FALSE"
+          | CProp (_,str) ->
+            Format.fprintf  fmt
+              "%s" str
+              
+          | CInfo i -> 
+            Format.fprintf  fmt
+              "%s" (printInfo i)
+              
+        in printer fmt p
 
       let copy f = f
       let internal_pretty_code _ = assert false

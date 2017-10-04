@@ -26,61 +26,8 @@ let dkey = Caret_option.register_category "rsm:utils"
 let dkey_accept = Caret_option.register_category "rsm:accept"
 let dkey_delete = Caret_option.register_category "rsm:delete"
 
-(* Imported functions from Caret_print *)
-let string_stmt stmt =
- 
 
-  let orig_str = 
-    String.trim
-      (Format.fprintf 
-	 Format.str_formatter 
-	 "@[%a@]" 
-	 Printer.pp_stmt 
-	 stmt;
-       Format.flush_str_formatter ()
-      )
-  in (*
-  if String.length orig_str > 15
-  then
-   String.sub orig_str 0 15
-  else*)
-    orig_str
-  ^(string_of_int stmt.Cil_types.sid)
- 
-let simple_state (state:state) = 
-
-  ("\"" ^ (string_stmt state.s_stmt) ^ "_st_" ^ 
-      (string_of_int state.s_id) ^ ": " ^ state.s_name ^ "\"")
-
-let simple_state_set set =  
-  RState.Set.fold(
-    fun st acc -> "\n" ^ (simple_state st) ^ acc
-  )
-    set
-    "\n"
-
-let string_box box = 
-  
-  "Box " ^ box.b_name ^ "_" ^ (string_of_int box.b_id)
- 
-  ^ "\n\nEntries :\n" 
-  ^ RState.Map.fold 
-    (fun call ent acc -> 
-      acc ^ (simple_state call) 
-      ^ "->" ^ (simple_state_set ent) ^ "\n")
-    box.b_entries
-    ""
-  ^ "\nExits :\n"
-  ^ RState.Map.fold 
-    (fun ext ret acc  -> 
-      acc ^ (simple_state ext) 
-      ^ "->" ^ (simple_state_set ret) ^ "\n")
-    box.b_exits
-    ""
-
-
-
-(** 2. Modules management  *)
+(** 1. Modules management  *)
     
 let mkModule 
     nam 
@@ -515,16 +462,16 @@ let addBuchiToRStates rsm =
 		      then
 			begin
 			  Caret_option.debug ~dkey:dkey_accept
-			    "State %s accepted ! %b -- %b"
-			    (simple_state st)
+			    "State %a accepted ! %b -- %b"
+			    RState.pretty st
 			    (not(formInAtom form checked_atom))
 			    (formInAtom f2 checked_atom);
 			  addForm st id_form
 			end
 		      else
 			Caret_option.debug ~dkey:dkey_accept
-			  "State %s refused ! %b -- %b"
-			  (simple_state st)
+			  "State %a refused ! %b -- %b"
+			   RState.pretty st
 			  (not(formInAtom form checked_atom))
 			  (formInAtom f2 checked_atom);
 		  | CUntil (Abstract,_,f2) -> 
@@ -538,16 +485,16 @@ let addBuchiToRStates rsm =
 		    then
 		      begin
 			Caret_option.debug ~dkey:dkey_accept
-			  "State %s accepted ! %b -- %b"
-			  (simple_state st)
+			  "State %a accepted ! %b -- %b"
+                          RState.pretty st
 			  (not(formInAtom form checked_atom))
 			  (formInAtom f2 checked_atom);
 			addForm st id_form
 		      end
 		    else
 		      Caret_option.debug ~dkey:dkey_accept
-			"State %s refused ! %b -- %b"
-			(simple_state st)
+			"State %a refused ! %b -- %b"
+			RState.pretty st
 			(not(formInAtom form checked_atom))
 			(formInAtom f2 checked_atom);
 		  | _ -> assert false
@@ -596,13 +543,13 @@ let addBuchiToRStates rsm =
     when pedantic is set to [true], Dfs_stopped will be raised. *)
 
 let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start = 
-  Caret_option.debug ~dkey "Dfs for %s" (simple_state start);
+  Caret_option.debug ~dkey "Dfs for %a" RState.pretty  start;
   let visited_config = ref Config.Set.empty in
   (* Todo : in case of multiple starts, doesn't work *)
   let rec dfsRun  box_list state = 
     let () = 
-      Caret_option.debug ~dkey "%s"
-	(simple_state state)
+      Caret_option.debug ~dkey "%a"
+        RState.pretty state
     in
     let config =  
       state, box_list
@@ -634,8 +581,8 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
 	  
 	  Caret_option.debug 
 	    ~dkey 
-	    "Box called : %s "
-	    (string_box box);
+	    "Box called : %a "
+	    Box.pretty box;
 	  
 	  let nexts = throughBox state box in
      	  RState.Set.iter (dfsRun (box::box_list)) nexts
@@ -649,8 +596,9 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
 	      let box = List.hd box_list in
 	      Caret_option.debug 
 		~dkey 
-		"Box returned : %s "
-		(string_box box);
+		"Box returned : %a "
+                Box.pretty box;
+
 	      let nexts = throughBox state box in
 	     
 	      RState.Set.iter (dfsRun (List.tl box_list)) nexts

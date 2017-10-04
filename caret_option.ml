@@ -94,7 +94,7 @@ module Output_closure = String
 
 module Closure = False
   (struct
-    let option_name = "-caret-closure"
+    let option_name = "-cafe-closure"
     let help = 
       "generates a file containing the closure set of the formula in argument"
    end)

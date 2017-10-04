@@ -5,6 +5,13 @@ type atom_kind = info_prop
 
 type raw_atom = Id_Formula.Set.t
 
+let pretty_raw_atom fmt a = 
+  Id_Formula.Set.iter
+    (fun form -> 
+       Format.fprintf fmt "%a\n" 
+	 Id_Formula.pretty form
+    ) a
+
 type atom = 
   
   {
@@ -44,10 +51,6 @@ module Atom:Datatype.S_with_collections with type t = atom =
 	  (stringAKind a.a_kind) ^ (string_raw_atom a.atom)
 	
 	let pretty fmt atom = 
-	  Id_Formula.Set.iter
-	    (fun form -> 
-	      Format.fprintf fmt "%a\n" 
-		Id_Formula.pretty form
-	    ) atom.atom
+	  pretty_raw_atom fmt atom.atom
       end
       )

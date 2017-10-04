@@ -5,7 +5,7 @@ open Formula_datatype
 open Caretast
 open Cil
 open Logic_const
-open Formula_utils
+open Smt_solver
 
 open Type_RState
 open Type_Rsm_module
@@ -105,8 +105,8 @@ let backward_dataflow_from_state s =
       pred
   in
     
-  let answer = try Formula_utils.z3_answer ~vars pred with 
-      Formula_utils.Smt_query_failure -> 
+  let answer = try z3_answer ~vars pred with 
+      Smt_query_failure -> 
 	let () = 
 	  Caret_option.feedback "Error in SMT query." in
 	  Unknown
@@ -139,8 +139,9 @@ let testAcceptance rsm =
 	    Cil_types.Return _ -> 
 	      let () = 
 		Caret_option.debug ~dkey
-		  "Can %s end the program ?"
-		  (Caret_print.string_atom state.s_atom) in
+		  "Can %a end the program ?"
+                  Atoms.Atom.pretty state.s_atom
+              in
 	      begin 
 		match backward_dataflow_from_state state with 
 		  Unsat -> 

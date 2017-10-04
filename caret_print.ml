@@ -1,13 +1,86 @@
-open Caretast
-open Formula_datatype
-open Atoms_utils
 open Atoms
+open Formula_datatype
 open Rsmast
 (* let dkey = Caret_option.register_category "printer" *)
 
 open Type_RState
 open Type_Box
 open Type_Rsm_module
+
+
+let print_rsm_complete_state_info fmt rsm = 
+
+  let print_state_info_caller fmt s = 
+    match s.call with
+      Some (box,_) -> 
+        Format.fprintf fmt "Calls the box %a\nAtomized by %a"
+          Box.pretty box
+          Atom.pretty box.box_atom
+    | None -> 
+      match s.return with
+	Some(box,_) -> 
+          Format.fprintf fmt  "Returns from the box :%a\n"
+            Box.pretty box
+      | _ -> ()
+  in
+  let print_state fmt s = 
+    Format.fprintf fmt
+      "State %a\nAtom: %a\n%s%a\n%a\n\n"
+      RState.pretty s
+      Atom.pretty s.s_atom
+      (if Id_Formula.Set.is_empty s.s_accept then "" else "Accepts:\n")
+      Atoms.pretty_raw_atom s.s_accept
+      print_state_info_caller s      
+  in
+  
+  Rsm_module.Set.iter
+    (fun rmod -> 
+       Format.fprintf fmt "Module %a:\n" Rsm_module.pretty rmod;
+       RState.Set.iter
+         (fun state -> 
+            Format.fprintf fmt "%a\n" print_state state)
+         rmod.states)
+    rsm.rsm_mod
+
+
+let print_rsm_simple_info fmt rsm = 
+  let total_trans = ref 0 in 
+  let print_mod_info r_mod =
+    let mod_trans = 
+      RState.Set.fold
+	(fun state acc -> acc + RState.Set.cardinal state.s_succs)
+	r_mod.states
+	0
+      in
+      let () = total_trans := mod_trans + !total_trans in
+      Format.fprintf fmt "Module %s:\n%d entries\n%d exits\n%d states\n%d transitions/plugs\n\n"
+        r_mod.mod_name
+        (RState.Set.cardinal r_mod.entries)
+        (RState.Set.cardinal r_mod.exits)
+        (RState.Set.cardinal r_mod.states)
+        mod_trans
+  in
+  let number_state = 
+    Rsm_module.Set.fold
+      (fun r_mod st -> 
+         print_mod_info r_mod;
+	 (st + (RState.Set.cardinal r_mod.states)))
+    rsm.rsm_mod
+    0
+      
+  in
+
+  Format.fprintf fmt
+    "Number of states: %d\n\
+     Number of trans:  %d\n\
+     Starts : \n%a\n\
+     Acceptance sets:\n Inf\n%a\n"
+    number_state 
+    !total_trans 
+    RState.pretty_state_set rsm.start 
+    Atoms.pretty_raw_atom rsm.until_set
+
+
 
 let deleteForbiddenDotChar str = 
   let isForb = function
@@ -35,65 +108,11 @@ let string_stmt (stmt:Cil_types.stmt) =
   else*)
     orig_str
 
-let string_formula formula = 
-  let printOpKind = function
-    | General -> "N "
-    | Abstract -> "A "
-    | Past -> "P "
-  in
-  let printInfo = function
-    | ICall (Some s) -> "Call_" ^ s 
-    | ICall _ -> "Call"
-    | IRet (Some s) -> "Ret_" ^ s
-    | IRet _ -> "Ret"
-    |Caretast.IInt  -> "Int"
-  in
-  let rec stringOf =  function
-  
-    | CNext (op,f) -> "( X"^ (printOpKind op) ^ (stringOf f) ^" )"
-    | CUntil (op, f1 ,f2) -> 
-      "( " ^(stringOf f1) ^ " U" ^(printOpKind op) ^ (stringOf f2) ^" )"
-    | CFatally (op,f) -> "( F"^ (printOpKind op) ^ (stringOf f) ^" )"
-    | CGlobally(op,f) -> "( G"^ (printOpKind op) ^ (stringOf f) ^" )"
-    | CNot f -> "NOT\\(" ^  (stringOf f) ^ "\\)" (* Todo : delete the \ *)
-    | CAnd (f1 ,f2) ->"( "^ (stringOf f1) ^ " & " ^ (stringOf f2) ^" )"
-    | COr (f1, f2)-> "( "^ (stringOf f1) ^ " | " ^ (stringOf f2) ^" )"
-    | CImplies (f1, f2)-> "( "^ (stringOf f1) ^ " => " ^ (stringOf f2) ^" )"
-    | CIff (f1, f2)-> "( "^ (stringOf f1) ^ " <=> " ^ (stringOf f2) ^" )"  
-    | CTrue -> "TRUE"
-    | CFalse -> "FALSE"
-    | CProp (_,str) -> str
 
-    | CInfo i -> printInfo i
-      
-  in
-  (stringOf formula)
+let print_path fmt s_list = 
+  Format.fprintf fmt "%a"
+    (Format.pp_print_list ~pp_sep:(fun fmt () -> Format.fprintf fmt "\n") RState.pretty) s_list
 
-let string_id_formula id_form = 
-  "Formula n°"^ (string_of_int id_form.f_id) 
-  ^ ": " ^ (string_formula id_form.form)
-
-let stringAKind atom = match getAtomKind atom with
-  | ICall (Some s) -> "Call_" ^ s ^ " - "
-  | ICall _ -> "Call - "
-  | IRet (Some s) -> "Ret_" ^ s ^" - "
-  | IRet _ -> "Ret - "
-  | IInt -> "Int - "
-
-let string_raw_atom set = 
-  if Id_Formula.Set.is_empty set then "[]" else
-  Id_Formula.Set.fold
-    (fun f acc ->
-      (string_formula f.form)^ " ;\n " ^ acc
-    )
-    set
-    "\n"   
-
-let string_atom atom = stringAKind atom  ^ string_raw_atom (atom.atom)
-
-let string_tag = function
-  | Tag Inf | TagR -> "Inf"
-  | Tag Fin -> "Fin"
   (* | IProp atom -> string_atom atom *)
 
 (** 1. Rsm print  *)
@@ -103,50 +122,10 @@ let short_state (state:state) =
   deleteForbiddenDotChar 
     ((string_stmt state.s_stmt)^ (string_of_int state.s_id))
 
-  
-let string_state_set s_set = 
-  RState.Set.fold
-    (fun s a -> a ^"\n" ^ (short_state s))
-    s_set
-    "\n"
-
-let simple_state state = 
-
-  ("\"" ^ (short_state state) ^ "_st_" ^ (string_of_int state.s_id) ^(string_tag state.s_info)^ ": " ^ state.s_name (*^ link *) ^ "\"")
-
-let string_path state_list = 
-  List.fold_left (fun acc st ->acc ^ (simple_state st)(*(string_of_int st.s_id)*)  ^"\n" ) "" state_list
-
-let string_state_config state = 
-  let atom_props = atomicProps state.s_atom in
-  "["^ String.trim (string_raw_atom atom_props) ^ "]"
-
-
 let simple_box box = 
   "Box_" ^  box.b_name ^ (string_of_int box.b_id)
 
-let string_box box = 
-  
-  (simple_box box)
-  ^ "\nAtom : " ^ (string_atom box.box_atom)
-  ^ "\n\nEntries :\n" 
-  ^ RState.Map.fold 
-    (fun call ent acc -> 
-      acc ^ (simple_state call) 
-      ^ "->" ^ (string_state_set ent) ^ "\n")
-    box.b_entries
-    ""
-  ^ "\nExits :\n"
-  ^ RState.Map.fold 
-    (fun ext ret acc -> 
-      acc ^ (simple_state ext) 
-      ^ "->" ^ (string_state_set ret) ^ "\n")
-    box.b_exits
-    ""
-
 let string_state rsm ?(cex = RState.Set.empty) ?(boxes = ref Box.Set.empty) state = 
-(* Replace "short_state" by "simple_state" for a complete graph but be
-   careful, you also need to change the name used for the transitions ! *)
 
   let color = 
     if RState.Set.mem state cex
@@ -296,52 +275,4 @@ let string_rsm ?(cex = RState.Set.empty ) rsm =
        rsm.rsm_mod)
        ""
   ^ "}\n"
-    
-let string_acceptance rsm = 
-
-    Id_Formula.Set.fold
-      (fun f acc -> 
-	acc ^ (string_formula f.form) ^ "\n"
-      )
-      rsm.until_set 
-      "Conditions : \nInf\n"
   
-   
-let string_rsm_infos rsm = 
-  let total_trans = ref 0 in 
-  let string_mod_info r_mod =
-    let mod_trans = 
-      RState.Set.fold
-	(fun state acc -> acc + RState.Set.cardinal state.s_succs)
-	r_mod.states
-	0
-      in
-    let () = total_trans := mod_trans + !total_trans in
-    "\nModule " ^ r_mod.mod_name ^ " :\n "
-    ^(string_of_int(RState.Set.cardinal r_mod.entries)) ^" entries\n "
-    ^(string_of_int(RState.Set.cardinal r_mod.exits)) ^" exits\n "
-    ^(string_of_int(RState.Set.cardinal r_mod.states)) ^" states\n "
-    ^(string_of_int(mod_trans)) ^ " transitions / plugs"
-  in
-  let number_state,str_mod_info = 
-    Rsm_module.Set.fold
-      (fun r_mod (st,str) -> 
-	(st + (RState.Set.cardinal r_mod.states),
-	 str  ^ (string_mod_info r_mod) ^ "\n--"))
-      rsm.rsm_mod
-      (0,"")
-      
-  in
-  let starts = 
-    RState.Set.fold
-      (fun start acc -> (simple_state start) ^"\n" ^ acc)
-      rsm.start
-      ""
-  in
-  "Number of states :" ^ string_of_int number_state ^ 
-    "\nNumber of trans : " ^ string_of_int !total_trans  ^
-    "\nStarts : "  ^ starts 
-  ^ "\nAcceptance sets :\n" ^  string_acceptance rsm  ^ "\n"
-  ^ str_mod_info
-
-let pred_to_cvc _ = ""

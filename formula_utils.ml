@@ -4,12 +4,12 @@ open Atoms
 open Atoms_utils
 open Cil_datatype
 open Cil
+open Smt_solver
 
 (** Main steps of the construction of the properties following the possible 
     rgba paths *)
 
 exception Unsatisfiable_formula
-exception Smt_query_failure
 
 module Fid = State_builder.SharedCounter(struct let name = "fid_counter" end)
 
@@ -25,255 +25,9 @@ let dkey_consist = Caret_option.register_category "formula_utils_cons"
 
 let dkey_next = Caret_option.register_category "formula_utils:nextReq"
 let dkey_sid_eff = Caret_option.register_category "formula_utils:noSideEffect"
-let dkey_z3 = Caret_option.register_category "formula_utils:z3"
 
-(** 0. Formula printer *)
+let pp_sep fmt () = Format.fprintf fmt "\n"
 
-let pp_print fmt form = 
-  
-   let printOpKind = function
-    | General -> "N "
-    | Abstract -> "A "
-    | Past -> "P "
-  in
-  let printInfo = function
-    | ICall (Some s) -> "Call_" ^ s 
-    | ICall _ -> "Call"
-    | IRet (Some s) -> "Ret_" ^ s
-    | IRet _ -> "Ret"
-    |Caretast.IInt  -> "Int"
-  in
-  let rec printer fmt = 
-    function
-    | CNext (op,f) -> 
-      Format.fprintf  fmt
-        "X%s (%a)"
-        (printOpKind op)
-        printer f
-
-    | CUntil  (op, f1 ,f2) -> 
-      Format.fprintf  fmt
-        "(%a) U%s (%a)"
-        printer f1
-        (printOpKind op)
-        printer f2
-
-    | CFatally (op,f) -> 
-      Format.fprintf  fmt
-        "F%s (%a)" 
-        (printOpKind op) 
-        printer f
-
-    | CGlobally(op,f) ->
-      Format.fprintf  fmt
-        "G%s (%a)" 
-        (printOpKind op) 
-        printer f
-
-    | CNot f -> 
-      Format.fprintf  fmt
-        "NOT(%a)" 
-        printer f
-
-    | CAnd (f1 ,f2) ->
-      Format.fprintf  fmt
-        "(%a) & (%a)"
-        printer f1
-        printer f2
-
-    | COr (f1, f2)-> 
-      Format.fprintf  fmt
-        "(%a) | (%a)"
-        printer f1
-        printer f2
-
-    | CImplies (f1, f2)-> 
-      Format.fprintf  fmt
-        "(%a) => (%a)"
-        printer f1
-        printer f2
-
-    | CIff (f1, f2)-> 
-      Format.fprintf fmt
-        "(%a) <=> (%a)"
-        printer f1
-        printer f2
-
-    | CTrue -> 
-      Format.fprintf  fmt
-        "TRUE"
-    | CFalse -> 
-      Format.fprintf  fmt
-        "FALSE"
-    | CProp (_,str) ->
-      Format.fprintf  fmt
-        "%s" str
-
-    | CInfo i -> 
-      Format.fprintf  fmt
-        "%s" (printInfo i)
-
-  in printer fmt form
-
-(** 1. Predicate to smt solver z3 *)
-
-let read_file chan =
-  let lines = ref [] in
-  try
-    while true; do
-      lines := input_line chan :: !lines
-    done; 
-    List.fold_right
-      (fun str acc -> acc ^ str ^ "\n") 
-      !lines 
-      ""
-  with End_of_file ->
-    List.fold_right
-      (fun str acc -> acc ^ str ^ "\n") 
-      !lines ""
-
-type smt_answer = 
-| Sat 
-| Unsat 
-| Unknown
-     
-
-let smt_query smt_solver options query = 
-  
-    let prefix_command = 
-      List.fold_left
-	(fun acc option -> 
-	  acc  ^ " -" ^ option)
-	smt_solver
-	options 
-    in
-    
-    let query_file = "__" ^ smt_solver ^ "_query.smt"
-    in
-    
-    let answer_file = "__" ^ smt_solver ^ "_ans.txt"
-    in
-    
-    let query_out = open_out query_file
-    in
-    let () = 
-      Printf.fprintf query_out "%s\n" query;
-      close_out query_out
-    in
-    
-    let smt_command = 
-      prefix_command  ^ " " ^ query_file  ^ " > "  ^  answer_file in
-    
-    if Sys.command smt_command <> 0
-    then
-      let () = 
-	Caret_option.feedback "Command line %s failed" smt_command in 
-      raise Smt_query_failure 
-    else
-      let file = open_in answer_file in
-      let result = read_file file in 
-      let () = close_in file in
-      result
-
-let z3_answer ?(vars = []) p = 
-
-  let vars = 
-    if vars <> []
-    then vars
-    else (* We visit the predicate and register every logic variable *)
-      let lvars = ref Logic_var.Set.empty in
-      let lvar_vis = 
-        object
-	  inherit Visitor.frama_c_inplace
-	  method! vlogic_var_use lv = 
-	    lvars := Logic_var.Set.add lv !lvars; DoChildren
-	end
-    
-      in
-      ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) p);
-      Logic_var.Set.elements !lvars 
-  in
-  let nlsat_query = 
-    Pred_printer.predicate_to_smt_query p "qfnra-nlsat"
-  in
-  
-  let basic_query = 
-    Pred_printer.predicate_to_smt_query p ""
-  in
-  let q_with_model q = 
-    List.fold_left
-      (fun acc lvar ->  
-	acc ^ "\n(get-value (" ^ lvar.Cil_types.lv_name ^"))")
-      q
-      vars
-  in
-
-
-    let res = (smt_query "z3" ["smt2"]  basic_query)
-    in
-    match String.lowercase_ascii (String.sub res 0 3) with
-      "sat" -> begin
-	let () = 
-	  Caret_option.debug ~dkey:dkey_z3 
-	    "%s!"
-	    res
-	in
-	  
-        Sat
-      end
-    | "uns" -> Unsat
-    | "unk" ->  
-      begin
-	let () = 
-	  Caret_option.feedback
-	    "Can't say if satisfiable : trying a different option";
-	 
-	    Caret_option.debug ~dkey:dkey_z3 
-	      "%s"
-	      res
-	in 
-	let next_res = (smt_query "z3" ["smt2"] nlsat_query)
-	in
-	match String.lowercase_ascii (String.sub next_res 0 3) with
-	  
-	  "sat" ->
-	    Caret_option.debug ~dkey:dkey_z3 
-	      "%s"
-	      next_res ; Sat
-	
-	| "uns" -> Unsat
-	| "unk" -> 
-	  let () = 
-	    Caret_option.feedback "Can't say if satisfiable" ; 
-	    try
-	      let model = (smt_query "z3" ["smt2"] (q_with_model nlsat_query))
-	      in
-	      
-	      Caret_option.debug ~dkey:dkey_z3 
-		"%s"
-		model
-	    with
-	      _ -> ()
-	  in Unknown
-	| _ -> Caret_option.fatal "?? : %s" next_res
-      end
-    | _ -> Caret_option.fatal "? : %s" res
-
-let pred_mem lvar pred = 
-  let lvar_vis = 
-object
-  inherit Visitor.frama_c_inplace
-  method! vlogic_var_use lv = 
-    if Logic_var.equal lv lvar
-    then 
-      let () = failwith "true" in SkipChildren
-    else DoChildren
-end
-  in
-  try ignore(Cil.visitCilPredicate (lvar_vis :> Cil.cilVisitor) pred);false
-  with 
-    Failure s -> if s = "true" then true else failwith s
-      
 (** 2. CaFE formula utils *)
 
 let mkIdForm f = 
@@ -297,12 +51,12 @@ let findFormula form closure =
     with
       Not_found -> 
         Caret_option.fatal
-           "Formula %a not found. Actual closure = %s"
-           pp_print form
-	  (
-	  List.fold_left
-	    (fun acc i_f -> acc ^ "\n" ^ (Caret_print.string_id_formula i_f)) "\n" closure
-	  )
+           "Formula %a not found. Actual closure = %a"
+           Caret_Formula.pretty form
+           (Format.pp_print_list 
+              ~pp_sep
+              Id_Formula.pretty) closure
+
 let isConsistent stmt ?(after = true) kf atom =
   (* let open Cil_types in *)
   let eval_to_bool = 
@@ -513,9 +267,8 @@ let nextReq info closure atom1 atom2 =
       Not_found ->
 	let () = 
 	  Caret_option.debug ~dkey:dkey_next
-	    "First time we see %s"
-	    (Caret_print.string_atom atom1)
-
+	    "First time we see %a"
+            Atom.pretty atom1
 	in
         let new_tbl = Atom.Hashtbl.create 42
 	  in
@@ -533,36 +286,33 @@ let nextReq info closure atom1 atom2 =
     in
     let () = 
       Caret_option.debug ~dkey:dkey_next
-	"%s -> %s -> %b"
-	
-	(Caret_print.string_atom atom1)
-	
-	(Caret_print.string_atom atom2)
-	res
+	"%a -> %a -> %b"
+	Atom.pretty atom1
+	Atom.pretty atom2
+        res
     in
     res
   with
     Not_found -> 
       	let () = 
 	  Caret_option.debug ~dkey:dkey_next
-	    "First time we see %s after %s"
-	    (Caret_print.string_atom atom2)
-	    (Caret_print.string_atom atom1)
+	    "First time we see %a after %a"
+	    Atom.pretty atom2
+	    Atom.pretty atom1
 
 	in
       let res = nextReqTest info closure atom1 atom2
       in
-      Atom.Hashtbl.add
-        a2_tbl
-	atom2
-	res;
+      let () = 
+        Atom.Hashtbl.add
+          a2_tbl
+          atom2
+          res;
       Caret_option.debug ~dkey:dkey_next 
-	"%s -> %s -> %b"
-	
-	(Caret_print.string_atom atom1)
-	
-	(Caret_print.string_atom atom2)
-	res;
+	"%a -> %a -> %b"
+	Atom.pretty atom1
+	Atom.pretty atom2
+        res in
       res
 	
 let absNextReq closure atom1 atom2 = 
@@ -623,9 +373,8 @@ let noSideEffectNextReq ?var atom1 atom2 =
       Not_found -> 
 	let () = 
 	  Caret_option.debug ~dkey:dkey_sid_eff 
-	    "First time we see %s"
-	    (Caret_print.string_atom atom1)
-	    
+	    "First time we see %a"
+            Atom.pretty atom1
 	in
 	let new_tbl = Atom.Hashtbl.create 42
 	in
@@ -642,11 +391,9 @@ let noSideEffectNextReq ?var atom1 atom2 =
     in
     let () = 
       Caret_option.debug ~dkey:dkey_sid_eff
-	"%s -> %s -> %b"
-	
-	(Caret_print.string_atom atom1)
-	
-	(Caret_print.string_atom atom2)
+	"%a -> %a -> %b"
+	Atom.pretty atom1
+	Atom.pretty atom2
 	res
     in
     res
@@ -672,11 +419,9 @@ let noSideEffectNextReq ?var atom1 atom2 =
 	if var = None then
 	let () = 
 	  Caret_option.debug ~dkey:dkey_sid_eff
-	    "%s -> %s -> %b"
-	    
-	    (Caret_print.string_atom atom1)
-	    
-	    (Caret_print.string_atom atom2)
+	    "%a -> %a -> %b"
+	    Atom.pretty atom1
+            Atom.pretty atom2
 	    res
 	in
 	Atom.Hashtbl.add 
@@ -803,7 +548,7 @@ let closure formula =
       | _ -> [formula;CNot(formula)]
     in
   let () = Caret_option.feedback "Formula : %a"
-      pp_print formula in
+      Caret_Formula.pretty formula in
     if List.exists 
       (fun form -> List.exists
 	(fun form2 -> Caret_Formula.equal form form2) forms) acc
@@ -844,14 +589,14 @@ let closure formula =
 	|CFatally _ -> 
 	  Caret_option.debug ~dkey ~level:1 
 	    "Formula badly normalized, %a contains Fatally."
-                pp_print formula; 
+                Caret_Formula.pretty formula; 
 	  Caret_option.fatal ~dkey
 	    "Closure failed : \"Fatally\" found."
 	    
 	|CGlobally _ -> 
 	  Caret_option.debug ~dkey ~level:1 
 	    "Formula badly normalized, %a contains Globally."
-	    pp_print formula;
+	    Caret_Formula.pretty formula;
 	  Caret_option.fatal ~dkey
 	    "Closure failed : \"Globally\" found." 
       end  
@@ -968,34 +713,17 @@ let mkAtoms closure atom_hashtbl =
   let () = 
     Caret_option.debug 
     ~dkey 
-    "atomic properties = %s end" 
-    (List.fold_left 
-       (fun a f -> a ^ (Caret_print.string_id_formula f)^"\n") 
-       "" 
-       atomic_list
-       ) in 
+    "atomic properties = %a end" 
+    (Format.pp_print_list ~pp_sep Id_Formula.pretty) 
+    atomic_list
+  in 
   let () =
     Caret_option.debug 
       ~dkey 
-      "Nexts : %s\nInfos : %s\nElse : %s"
-      (List.fold_left
-	 (fun acc f -> acc ^ Caret_print.string_formula f)
-	 ""
-	 next_list  
-      )
-      (
-	List.fold_left
-	  (fun acc f -> acc ^ Caret_print.string_id_formula f)
-	  ""
-	  call_int_ret
-      )
-      
-      (
-	List.fold_left
-	  (fun acc f -> acc ^ Caret_print.string_id_formula f)
-	  ""
-	  other_form
-      )
+      "Nexts : %a\nInfos : %a\nElse : %a"
+      (Format.pp_print_list ~pp_sep Caret_Formula.pretty) next_list
+      (Format.pp_print_list ~pp_sep Id_Formula.pretty) call_int_ret
+      (Format.pp_print_list ~pp_sep Id_Formula.pretty) other_form
   in
   let addListsWithNeg big_l elt = 
     
@@ -1014,19 +742,19 @@ let mkAtoms closure atom_hashtbl =
 	   begin
 	     Caret_option.debug
 	       ~dkey
-	       "Formula %s already in \n%s"
-	       (Caret_print.string_id_formula elt)
-	       (Caret_print.string_raw_atom set);
+	       "Formula %a already in \n%a"
+               Id_Formula.pretty elt
+               Atoms.pretty_raw_atom set;
 	     set :: acc
 	   end
 	 else
-	   begin
-	     Caret_option.debug
+	   begin	     
+             Caret_option.debug
 	       ~dkey
-	       "Formula %s not in \n%s"
-	       (Caret_print.string_id_formula elt)
-	       (Caret_print.string_raw_atom set);
-
+	       "Formula %a not in \n%a"
+               Id_Formula.pretty elt
+               Atoms.pretty_raw_atom set;
+	     
 	     (Id_Formula.Set.add 
 		elt 
 		set) 
@@ -1075,13 +803,8 @@ let mkAtoms closure atom_hashtbl =
 
   Caret_option.debug
     ~dkey
-    "atomic parts  =\n %s"
-    (List.fold_left
-       (fun a elt -> a ^ "[ "^(Caret_print.string_raw_atom elt)^ "]\n")  
-       "" 
-       atomic_parts
-
-    );
+    "atomic parts  =\n %a"
+    (Format.pp_print_list ~pp_sep Atoms.pretty_raw_atom) atomic_parts;
  
  (* let next_list,other_forms =
     List.fold_left
@@ -1159,12 +882,8 @@ let mkAtoms closure atom_hashtbl =
   in
   Caret_option.debug
     ~dkey
-    "atomic parts with next =\n %s"
-    (List.fold_left 
-       (fun a l -> a ^ (Caret_print.string_raw_atom l)^ "\n") 
-       "" 
-       atomic_parts
-    );
+    "atomic parts with next =\n %a"
+    (Format.pp_print_list ~pp_sep Atoms.pretty_raw_atom) atomic_parts;
 (*
   let pre_atoms = 
     (* We now add the call / ret /int information, if there is *)
@@ -1256,12 +975,8 @@ let mkAtoms closure atom_hashtbl =
   in
   Caret_option.debug
     ~dkey
-    "pre atoms =\n %s"
-    (List.fold_left 
-       (fun a at -> a ^ (Caret_print.string_atom !at)^ "\n") 
-       "" 
-       pre_atoms
-    );
+    "pre atoms =\n %a"
+    (Format.pp_print_list ~pp_sep (fun fmt a -> Atom.pretty fmt !a)) pre_atoms;
   let testPossible atom f = 
     let form = getFormula f in
       (*let infoToAKind = function
@@ -1284,9 +999,9 @@ let mkAtoms closure atom_hashtbl =
 	| CInfo i ->  
 	  begin
 	    let () = Caret_option.debug ~dkey
-	      "Can %a be in %s ?"
-	      pp_print form
-	      (Caret_print.string_atom atom)
+	      "Can %a be in %a ?"
+	      Caret_Formula.pretty form
+	      Atom.pretty atom
 	    in
 	    match i with
 	      ICall (Some _) | IRet (Some _) -> 
@@ -1396,12 +1111,17 @@ let mkAtoms closure atom_hashtbl =
     pre_atoms
 *)
 
-let string_spurious () = 
-  Cil_datatype.Stmt.Hashtbl.fold
-    (fun stmt form_set acc -> 
-      acc ^ "On statement " ^ (Caret_print.string_stmt stmt) 
-      ^ " of " ^ (Kernel_function.get_name (Kernel_function.find_englobing_kf stmt))
-      ^ ", there is spurious formulas :\n" ^ 
-	(Caret_print.string_raw_atom form_set))
-    spurious_stmt_hashtbl 
-    ""
+let string_spurious = 
+  Cil_datatype.Stmt.Hashtbl.iter
+    (fun stmt form_set -> 
+       Format.fprintf
+         Format.std_formatter
+         "\nOn statement %a of function %a, there are spurious formulas:\n%a"
+         Printer.pp_stmt stmt
+         Kernel_function.pretty (Kernel_function.find_englobing_kf stmt)
+         Atoms.pretty_raw_atom form_set)
+
+    spurious_stmt_hashtbl;
+
+  Format.flush_str_formatter
+    

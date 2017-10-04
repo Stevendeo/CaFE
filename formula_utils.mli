@@ -5,26 +5,7 @@ open Atoms
 
 exception Unsatisfiable_formula
 
-
-(** 0. Printer *)
-
-val pp_print : Format.formatter -> caret_formula -> unit
-
-(** 1. SMT solver query of Cil predicates *)
-
-exception Smt_query_failure
-
-type smt_answer = 
-| Sat 
-| Unsat 
-| Unknown
-
-
-val z3_answer :  ?vars : Cil_types.logic_var list -> Cil_types.predicate ->smt_answer
-
-val pred_mem : Cil_types.logic_var -> Cil_types.predicate -> bool
-
-(** 2. CaFE Formula utils  *)
+(** 1. CaFE Formula utils  *)
 val spurious_stmt_hashtbl : Id_Formula.Set.t Cil_datatype.Stmt.Hashtbl.t
 
 (** Formula utilities *)

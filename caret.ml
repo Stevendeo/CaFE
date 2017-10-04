@@ -2,15 +2,15 @@ open Atoms
 open Caret_option
 open Rsmast
 open Caretast
+open Formula_datatype
 (* open Caret_visitor *)
 (* open Rsm *)
 
 open Type_RState
-open Type_Box
 open Type_Rsm_module
 
 let dkey = Caret_option.register_category "main_caret" 
-let output_fun chan = Printf.fprintf chan "%s\n" 
+let output_fun chan = Printf.fprintf chan
 
 let treatment file formula closure atoms = 	    
   
@@ -120,7 +120,7 @@ let treatment file formula closure atoms =
   begin (* Spurious *)
     if Spurious.get ()
     then
-      output_fun stdout (Formula_utils.string_spurious ())
+      output_fun stdout "%s" (Formula_utils.string_spurious ())
 	
   end;(* Spurious *)
   
@@ -130,31 +130,25 @@ let treatment file formula closure atoms =
     if not(Output_dot.is_default ())
     then 
       let file = Output_dot.get () in
-      begin
-        
-	  let chan_dot = open_out file
-
-	  in
-	  
-	  let rsm_str = 
-	    
-	    if Dot.get () 
-	    then 
-	      begin
-		Caret_option.feedback
-		  "Dot printing" ;
-		
-		Caret_print.string_rsm rsm ~cex:!cex
-	      end
-	    else
-	      Caret_print.string_rsm_infos rsm ;
-	  in
-
-	  output_fun chan_dot rsm_str;
-	  close_out chan_dot
-	    
-	end
-    end; (* Print automaton *)
+      
+      let chan_dot = open_out file
+      in
+      if Dot.get () 
+      then 
+        let () = 
+          Caret_option.feedback
+            "Dot printing" in
+        Format.fprintf
+          (Format.formatter_of_out_channel chan_dot)
+          "%s"
+	  (Caret_print.string_rsm rsm ~cex:!cex)
+   
+      else
+        Format.fprintf (Format.formatter_of_out_channel chan_dot) "%a" 
+          Caret_print.print_rsm_simple_info rsm ;
+      
+      close_out chan_dot
+  end; (* Print automaton *)
     
     (** Getting states information  *)
     
@@ -163,50 +157,9 @@ let treatment file formula closure atoms =
       then
 	    begin 
 	      let chan_st = open_out (Complete_states.get ()) in 
-	      output_fun 
-		chan_st
-		(Rsm_module.Set.fold
-		   (fun r_mod str -> 
-		     (RState.Set.fold 
-			(fun state sub_str -> 
-			  if not(Rsm.isDeleted state) then
-			  let more_infos = 
-			    match state.call with
-			      Some (box,_) -> 
-				"\nCalls the box :\n" ^ 
-				  (box.b_name) ^ 
-				  "_" ^ (string_of_int box.b_id) ^
-				"\nAtomized by : " ^
-				  (Caret_print.string_atom box.box_atom)
-			    | None -> 
-			      match state.return with
-				Some(box,_) -> "\nCalls the box :\n" ^ 
-				  (Caret_print.string_atom box.box_atom)
-			      | None -> ""
-			  in
-			  sub_str ^ "\n\nRState :\n" 
-			  ^ (Caret_print.simple_state state) 
-			  ^ "\nAtom : " ^ (Caret_print.string_atom state.s_atom)
-			  ^ (if Formula_datatype.Id_Formula.Set.is_empty state.s_accept
-			    then ""
-			    else "\nAccepts :" ^ Caret_print.string_raw_atom state.s_accept)
-			  ^ more_infos
-			  else ""
-			)
-			r_mod.states
-			""
-		     ) ^ 
-		       (
-			 Box.Set.fold 
-			   (fun box sub_str -> 
-			     "\nBox :\n"  
-			     ^ (Caret_print.string_box box) ^ sub_str)
-			   r_mod.box_repres
-			   ""
-		       ) ^ str 
-		   )
-		   rsm.rsm_mod
-		   "\n");
+              Format.fprintf (Format.formatter_of_out_channel chan_st)
+                "%a"
+                Caret_print.print_rsm_complete_state_info rsm;
 	      close_out chan_st
 	    end
     end (* RState infos *)
@@ -224,8 +177,8 @@ let work () =
   (** Computation of the closure / atoms from the formula *)
   let () = Caret_option.feedback ~dkey "Normalize" in
   let formula = Formula_utils.normalizeFormula formula in 
-  Caret_option.feedback "Closure computation of the formula %s"
-    (Caret_print.string_formula formula);  
+  Caret_option.feedback "Closure computation of the formula %a"
+    Caret_Formula.pretty formula;  
   let formula = match formula with
       Caretast.CNot f -> f 
     | _ -> Caretast.CNot formula
@@ -245,30 +198,25 @@ let work () =
       let () = 
 	Caret_option.feedback
 	  "Closure printing" in
-      let closure_str = 
-	List.fold_left
-	  (fun acc form -> 
-	    (Caret_print.string_formula 
-	       (Formula_utils.getFormula form))  
-	    ^ "\n" ^ acc)
-	  "\n"
-	  closure
-      in
-      let () = 
-	Caret_option.feedback
-	  "%s"
-	  closure_str in
       if Output_closure.is_default () 
-      then Caret_option.feedback "Closure file missing" 
-	  (*output_fun stdout closure_str *)
+      then 
+	Caret_option.feedback
+	  "%a\n"
+          (Format.pp_print_list 
+             ~pp_sep:(fun fmt () -> Format.fprintf fmt "\n") 
+             Id_Formula.pretty) closure 
       else  
-	begin
-	  Caret_option.feedback "Closure file here" ;
-	  let filecl = Output_closure.get () in
-	  let chan_cl = open_out filecl in
-	  output_fun chan_cl closure_str;
-	  close_out chan_cl
-	end
+        let filecl = Output_closure.get () in
+        let chan_cl = open_out filecl in
+        let () = Format.fprintf 
+                   (Format.formatter_of_out_channel chan_cl) 
+                   "%a\n" 
+                   (Format.pp_print_list  
+                      ~pp_sep:(fun fmt () -> Format.fprintf fmt "\n") 
+                      Id_Formula.pretty) 
+                   closure in
+	close_out chan_cl
+	
   end; (* Print closure *)
   
     begin(* Print atoms *) 
@@ -277,42 +225,35 @@ let work () =
 	Caret_option.feedback
 	  "Atoms printing";
 	
-	let call,int,ret = 
-	  Hashtbl.fold
-	    (fun key bind (acc_call, acc_int, acc_ret) -> 
-	      match key with
-		ICall _ -> (Atom.Set.union bind acc_call, acc_int, acc_ret)
-	      | IInt -> (acc_call, Atom.Set.union bind acc_int, acc_ret)
-	      | IRet _ -> (acc_call, acc_int, Atom.Set.union bind acc_ret)
-	    )
-	    atoms
-	    (Atom.Set.empty,Atom.Set.empty,Atom.Set.empty)
+        let call,int,ret = 
+          Hashtbl.fold
+            (fun key bind (acc_call, acc_int, acc_ret) -> 
+               match key with
+                 ICall _ -> (Atom.Set.union bind acc_call, acc_int, acc_ret)
+               | IInt -> (acc_call, Atom.Set.union bind acc_int, acc_ret)
+               | IRet _ -> (acc_call, acc_int, Atom.Set.union bind acc_ret)
+            )
+            atoms
+            (Atom.Set.empty,Atom.Set.empty,Atom.Set.empty)
+        in
+        let atoms_str = 
+          let strfmt_atom_set  =  
+	  (Atom.Set.iter
+	     (fun atom -> Format.fprintf Format.str_formatter "%a\n\n" Atom.pretty atom)) in
+          strfmt_atom_set call;
+          strfmt_atom_set int;
+          strfmt_atom_set ret;
+          Format.flush_str_formatter ()
 	in
-	let atoms_str = 
-	  (Atom.Set.fold
-	     (fun atom acc -> Caret_print.string_atom atom  ^ "\n\n" ^ acc)
-	     call
-	     "\n\n"
-	  ) ^
-	    (Atom.Set.fold
-	       (fun atom acc -> Caret_print.string_atom atom  ^ "\n\n" ^ acc)
-	       int
-	       "\n\n"
-	    ) ^
-	    (Atom.Set.fold
-	       (fun atom acc -> Caret_print.string_atom atom  ^ "\n\n" ^ acc)
-	       ret
-	       "\n\n"
-	    )
-	in
-	if Output_atoms.is_default ()  
-	then () (* output_fun stdout atoms_str *)
-    else  
+        if Output_atoms.is_default ()  
+        then () (* output_fun stdout atoms_str *)
+        else  
       begin
 	let fileat = Output_atoms.get () in
 	let chan_at = open_out fileat in
-	output_fun chan_at ((Caret_print.string_formula formula) ^ "\n\n");
-	output_fun chan_at atoms_str;
+        Format.fprintf 
+          (Format.formatter_of_out_channel chan_at) "%a\n\n" Caret_Formula.pretty formula;
+	output_fun chan_at "%s" atoms_str;
 	close_out chan_at
       end;
       end

@@ -6,6 +6,8 @@ type atom_kind = Caretast.info_prop
 
 type raw_atom = Id_Formula.Set.t
 
+val pretty_raw_atom : Format.formatter -> raw_atom -> unit
+
 type atom = 
   
   {
