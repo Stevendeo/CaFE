@@ -238,8 +238,12 @@ let if_conds_as_pred (s : stmt list) : predicate =
       ) 
 
   let update_pred_about_var vinfo exp pred = 
-    
-        
+    let () = 
+      Caret_option.debug 
+        "Updating %a : now %a"
+        Printer.pp_varinfo vinfo
+        Printer.pp_exp exp in
+
     let new_term = correct_term_from_exp exp
     in
 
@@ -391,6 +395,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  match st.skind with
 	    Instr (Set ((Var v,_), _, _)) 
 	  | Instr (Call ((Some (Var v,_)),_,_,_))
+          | Instr(Local_init (v,_,_))
 	    -> 
 	    Varinfo.Set.add v acc
 	  | _ -> acc 
@@ -403,40 +408,45 @@ let if_conds_as_pred (s : stmt list) : predicate =
     *)
     let treat_block block = 
       let () = 
-	Caret_option.debug ~dkey:dkey_stmt ~level:4
-	  "Block treated : @[%a@]"
-	  Printer.pp_block block in
+        Caret_option.debug ~dkey:dkey_stmt ~level:4
+          "Block treated : @[%a@]"
+          Printer.pp_block block in
       let stmt_action stmt (wp : predicate option) = 
-	let in_good_if =
-	  begin
-	    match (fst(Stmt.Hashtbl.find if_stmt_hashtbl stmt)).skind
-	    with
-	      If (e,_,_,_) -> 
-		Exp.equal e cond_exp
+        let in_good_if =
+          begin
+            match (fst(Stmt.Hashtbl.find if_stmt_hashtbl stmt)).skind
+            with
+              If (e,_,_,_) -> 
+              Exp.equal e cond_exp
 	    | _ -> assert false
 	  end
-	in
-	if (not in_good_if)
-	then (wp(* ,wlp *)) 
-	else 
-	  match stmt.skind with
-	    If (e,b1,b2,_) -> 
-	      let pref,wp_top(* ,wlp_bot *) = treat_if e b1 b2
-	      in
-
-	      let wp_part = 
-		Pimplies 
-		  ( unamed pref,
-		    unamed wp_top(* wp_part *) )
-	      in
-	      
-	      Some (unamed wp_part) (* , wlp_part *)
-        
-	  | Instr i ->
-	    begin
-	      match i with 
-		Set ((Var v,_), exp, _) -> 
-		  
+        in
+        if (not in_good_if)
+        then (wp(* ,wlp *)) 
+        else 
+          match stmt.skind with
+            If (e,b1,b2,_) -> 
+            let pref,wp_top(* ,wlp_bot *) = treat_if e b1 b2
+            in
+            
+            let wp_part = 
+              Pimplies 
+	        ( unamed pref,
+           unamed wp_top(* wp_part *) )
+            in
+            
+            Some (unamed wp_part) (* , wlp_part *)
+              
+          | Instr i ->
+            begin
+              match i with 
+                Local_init (v,AssignInit (SingleInit exp),_)
+              | Set ((Var v,_), exp, _) -> 
+                let () =  
+                  Caret_option.debug ~dkey:dkey_stmt
+                    "Instruction %a = %a"
+                    Printer.pp_varinfo v
+                    Printer.pp_exp exp in
 		    (*let () = 
 		      var_used := Varinfo.Set.add v !var_used
 		      
@@ -444,7 +454,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		  let actual_var = get_lvar v
 		  in
 		  
-		    
+		   
 		  let lval_term = 
 		    tvar actual_var
 		  in
@@ -452,7 +462,7 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		  let () = 
 		    if stmt.preds <> []
 		    then
-		      ignore (get_new_lvar v)
+		      ignore (get_lvar v)
 		  in
 		  
 		  let correct_term = correct_term_from_exp exp 
@@ -460,8 +470,12 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		  
 		  
 		  let new_pred = 
-		  Prel (Req, lval_term, correct_term)
-		      
+                  Prel (Req, lval_term, correct_term)
+                  in 
+                  let () = 
+                    Caret_option.debug ~dkey:dkey_stmt
+                      "Predicate generated: %a"
+                      Printer.pp_predicate_node new_pred
 		      
 		  in
 		  if wp = None then Some (unamed new_pred)
@@ -476,7 +490,6 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		      
 	      | _ -> (wp(* ,wlp *))(* todo : treat the rest *)
 	    end
-	      
 	  | Return _ 
 	  | Goto _
 	  | Break _
@@ -963,7 +976,9 @@ let if_conds_as_pred (s : stmt list) : predicate =
 		If (_,b1,b2,_) -> 
 		  Varinfo.Set.union (loop_assigns b1) (Varinfo.Set.union (loop_assigns b2) acc)
 	      | Block b -> Varinfo.Set.union (loop_assigns b) acc
-	      | Instr(Set ((Var v,_),_,_)) ->  Varinfo.Set.add v acc 
+	      | Instr(Set ((Var v,_),_,_)) 
+              | Instr(Local_init (v,_,_)) -> 
+                Varinfo.Set.add v acc 
 	      | _ -> acc
 	    ) b.bstmts Varinfo.Set.empty in
 	
@@ -972,7 +987,6 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  Varinfo.Set.iter
 	    (fun v -> ignore (get_new_lvar v))
 	    (loop_assigns b)  in
-
 
 	let data = 
 	unamed(Pand (unamed no_loop_pred,pred))
@@ -996,20 +1010,19 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	in 
         Done data
       in 
-      let init_state = 
-	if (s.preds = [] && 
+      let is_init_state = (s.preds = [] && 
 	    (Kernel_function.equal 
 	       (Kernel_function.find_englobing_kf s)
 	       (!Parameter_builder.find_kf_by_name "main")
 	    )
-	)
+	                  ) 
+      in
+      let init_state = 
+	if is_init_state
 	  
 	then 
-	  let () =    
-	    Caret_option.debug ~dkey:dkey_stmt ~level:3
-	      "Initial state"
-	  in 
-	  Some (
+         
+          Some (
 	    Cil.foldGlobals 
 	      (Ast.get ())
 	      (fun (acc : predicate) global -> 
@@ -1032,10 +1045,21 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	  
 	else None in
       
+      let update_if_init_state pred : predicate = 
+        if is_init_state then   
+          match s.skind with
+              Instr(Set((Var v,_),exp,_))
+          | Instr(Local_init (v,AssignInit (SingleInit exp),_)) ->
+              update_pred_about_var v exp pred
+          | _ -> unamed pred (* TODO : Ifs not treated here *)
+      
+        else unamed pred in
       match data,init_state with
 	_,None -> data
-      | Done (pred,vars),Some p -> Done (unamed (Pand (pred,p)),vars)
-      | Default,Some p -> Done (unamed (Pand (prev_data,p)),vars)
+      | Done (pred,vars),Some p -> 
+        Done (unamed (Pand (update_if_init_state pred.pred_content,p)),vars)
+      | Default,Some p -> 
+        Done (unamed (Pand (update_if_init_state prev_data.pred_content,p)),vars)
       | _ -> assert false
       
 
@@ -1044,11 +1068,6 @@ let if_conds_as_pred (s : stmt list) : predicate =
       Call _ 
     | Asm _ 
     | Skip _ -> Default
-    | Local_init (v,AssignInit (SingleInit exp),_) -> 
-      let () = Caret_option.debug "Local_init : correcting the predicate" in
-      Done ((update_pred_about_var v exp pred.pred_content),vars)
-      
-    | Local_init _ -> failwith "Complex Local_init not supported in back_dataflow" 
     (* TODO *)
     
     | Code_annot _ -> Default 
@@ -1056,13 +1075,13 @@ let if_conds_as_pred (s : stmt list) : predicate =
 	 - if proved, get results 
 	 - treat assertions *)
       
-    | Set ((lhost,_),exp,_) ->
-      match lhost with 
-	Var v -> 
+    | Set ((Var v,_),exp,_) 
+    | Local_init (v,AssignInit (SingleInit exp),_)->
 	  let () = Caret_option.debug "Set : correcting the predicate" in
 	  Done ((update_pred_about_var v exp pred.pred_content),vars)
-      | Mem _ -> Default (* todo : treat tab *)
 	
+    | Set ((Mem _,_),_,_) | Local_init _ -> Default
+
   let filterStmt _ _ = true
     
 end

@@ -27,6 +27,94 @@ let dkey_next = Caret_option.register_category "formula_utils:nextReq"
 let dkey_sid_eff = Caret_option.register_category "formula_utils:noSideEffect"
 let dkey_z3 = Caret_option.register_category "formula_utils:z3"
 
+(** 0. Formula printer *)
+
+let pp_print fmt form = 
+  
+   let printOpKind = function
+    | General -> "N "
+    | Abstract -> "A "
+    | Past -> "P "
+  in
+  let printInfo = function
+    | ICall (Some s) -> "Call_" ^ s 
+    | ICall _ -> "Call"
+    | IRet (Some s) -> "Ret_" ^ s
+    | IRet _ -> "Ret"
+    |Caretast.IInt  -> "Int"
+  in
+  let rec printer fmt = 
+    function
+    | CNext (op,f) -> 
+      Format.fprintf  fmt
+        "X%s (%a)"
+        (printOpKind op)
+        printer f
+
+    | CUntil  (op, f1 ,f2) -> 
+      Format.fprintf  fmt
+        "(%a) U%s (%a)"
+        printer f1
+        (printOpKind op)
+        printer f2
+
+    | CFatally (op,f) -> 
+      Format.fprintf  fmt
+        "F%s (%a)" 
+        (printOpKind op) 
+        printer f
+
+    | CGlobally(op,f) ->
+      Format.fprintf  fmt
+        "G%s (%a)" 
+        (printOpKind op) 
+        printer f
+
+    | CNot f -> 
+      Format.fprintf  fmt
+        "NOT(%a)" 
+        printer f
+
+    | CAnd (f1 ,f2) ->
+      Format.fprintf  fmt
+        "(%a) & (%a)"
+        printer f1
+        printer f2
+
+    | COr (f1, f2)-> 
+      Format.fprintf  fmt
+        "(%a) | (%a)"
+        printer f1
+        printer f2
+
+    | CImplies (f1, f2)-> 
+      Format.fprintf  fmt
+        "(%a) => (%a)"
+        printer f1
+        printer f2
+
+    | CIff (f1, f2)-> 
+      Format.fprintf fmt
+        "(%a) <=> (%a)"
+        printer f1
+        printer f2
+
+    | CTrue -> 
+      Format.fprintf  fmt
+        "TRUE"
+    | CFalse -> 
+      Format.fprintf  fmt
+        "FALSE"
+    | CProp (_,str) ->
+      Format.fprintf  fmt
+        "%s" str
+
+    | CInfo i -> 
+      Format.fprintf  fmt
+        "%s" (printInfo i)
+
+  in printer fmt form
+
 (** 1. Predicate to smt solver z3 *)
 
 let read_file chan =
@@ -208,9 +296,9 @@ let findFormula form closure =
 	closure
     with
       Not_found -> 
-	Caret_option.fatal
-	  "Formula %s not found. Actual closure = %s"
-	  (Caret_print.string_formula form)
+        Caret_option.fatal
+           "Formula %a not found. Actual closure = %s"
+           pp_print form
 	  (
 	  List.fold_left
 	    (fun acc i_f -> acc ^ "\n" ^ (Caret_print.string_id_formula i_f)) "\n" closure
@@ -380,59 +468,7 @@ let isConsistent stmt ?(after = true) kf atom =
     match z3_answer pred_of_atom_and_asserts with
     | Sat | Unknown -> true
     | Unsat -> false
-    
-(*
-  let treatForm f =
-    let form = getFormula f in
-    
-    match form with
-      CProp (pred,_) -> 
-	let prop_stat = 
-	  eval_pred state pred in
-	let () = 
-	  if prop_stat = Property_status.Dont_know 
-	  then 
-	    begin
-	      Caret_option.debug ~dkey:dkey_consist
-		"Value can't tell if %s is verified at statement %s"
-		(Caret_print.string_formula form)
-		(Caret_print.string_stmt stmt);
-	      let old_bind = 
-		try Stmt.Hashtbl.find spurious_stmt_hashtbl stmt
-		with Not_found -> Id_Formula.Set.empty
-	      in
-	      Stmt.Hashtbl.replace spurious_stmt_hashtbl stmt (Id_Formula.Set.add f old_bind)
-	    end
-	in
-        eval_to_bool prop_stat
-
-    | CNot (CProp (pred,_)) -> 
-      let prop_stat = 
-	eval_pred state pred
-      in  	  
-      if prop_stat = Property_status.Dont_know 
-      then 
-	let () = 
-	  Caret_option.debug ~dkey:dkey_consist 
-	    "Value can't tell if %s is verified at statement %s"
-	    (Caret_print.string_formula form)
-	    (Caret_print.string_stmt stmt);
-	  let old_bind = 
-	    try Stmt.Hashtbl.find spurious_stmt_hashtbl stmt
-	    with Not_found -> Id_Formula.Set.empty
-	    in
-	    Stmt.Hashtbl.replace spurious_stmt_hashtbl stmt (Id_Formula.Set.add  f old_bind)
-	  in
-	  true
-	else
-	  prop_stat <> Property_status.True
-    | _ -> true
-  in
-    
-  Id_Formula.Set.for_all 
-    treatForm
-    (atomicProps atom)*)
-
+  
 let gen_next_hashtbl:(bool Atom.Hashtbl.t) Atom.Hashtbl.t = 
   Atom.Hashtbl.create 42
 
@@ -766,8 +802,8 @@ let closure formula =
 	CNot f -> [f;formula]
       | _ -> [formula;CNot(formula)]
     in
-  let () = Caret_option.feedback "Formula : %s" 
-    (Caret_print.string_formula formula) in
+  let () = Caret_option.feedback "Formula : %a"
+      pp_print formula in
     if List.exists 
       (fun form -> List.exists
 	(fun form2 -> Caret_Formula.equal form form2) forms) acc
@@ -807,15 +843,15 @@ let closure formula =
 	  
 	|CFatally _ -> 
 	  Caret_option.debug ~dkey ~level:1 
-	    "Formula badly normalized, %s contains Fatally."
-	    (Caret_print.string_formula formula);
+	    "Formula badly normalized, %a contains Fatally."
+                pp_print formula; 
 	  Caret_option.fatal ~dkey
 	    "Closure failed : \"Fatally\" found."
 	    
 	|CGlobally _ -> 
 	  Caret_option.debug ~dkey ~level:1 
-	    "Formula badly normalized, %s contains Globally."
-	    (Caret_print.string_formula formula);
+	    "Formula badly normalized, %a contains Globally."
+	    pp_print formula;
 	  Caret_option.fatal ~dkey
 	    "Closure failed : \"Globally\" found." 
       end  
@@ -1248,8 +1284,8 @@ let mkAtoms closure atom_hashtbl =
 	| CInfo i ->  
 	  begin
 	    let () = Caret_option.debug ~dkey
-	      "Can %s be in %s ?"
-	      (Caret_print.string_formula form)
+	      "Can %a be in %s ?"
+	      pp_print form
 	      (Caret_print.string_atom atom)
 	    in
 	    match i with
@@ -1263,18 +1299,13 @@ let mkAtoms closure atom_hashtbl =
 	| COr (f1, f2) -> (formInAtom f1 atom) || (formInAtom f2 atom)
 	| CAnd (f1, f2) -> (formInAtom f1 atom) && (formInAtom f2 atom)
 	| CUntil (op, f1, f2) ->
-	  Caret_option.debug
-	    ~dkey
-	    "Until detected : %s. \nCan it be in atom %s ?\n Is %s in ? %b\nIs %s in ? %b Is there %s ? %b"
-	    (Caret_print.string_formula form)
-	    (Caret_print.string_atom atom)
-	    (Caret_print.string_formula f2)
-	    (formInAtom f2 atom)
-	    (Caret_print.string_formula f1)
-	    (formInAtom f1 atom)
-	    (Caret_print.string_formula (CNext(op, CUntil(op, f1, f2))))
-	    (formInAtom (CNext(op, CUntil(op, f1, f2))) atom);
-	  begin
+          (*let () = 
+            Caret_option.debug
+	      ~dkey
+              "Until detected : %a."
+              pp_print form in
+	    *)
+          begin
 	    match f1,f2 with 
 	      
 	    | _,CTrue -> true
@@ -1297,22 +1328,22 @@ let mkAtoms closure atom_hashtbl =
   let addIfPossible form atom = 
     if testPossible !atom form
     then 
-      begin
+      begin (*
 	Caret_option.debug
 	  ~dkey
-	  "Formula %s accepted in atom %s "
-	  (Caret_print.string_formula (getFormula form))
+	  "Formula %a accepted in atom %s "
+	  pp_print (getFormula form)
 	  (Caret_print.string_atom !atom);
-        addForm form !atom 
+      *)addForm form !atom 
       end
     else 
       begin
-      Caret_option.debug
+      (*Caret_option.debug
 	~dkey
 	"Formula %s not accepted in atom \n:%s "
-	(Caret_print.string_formula (getFormula form))
+	pp_print (getFormula form)
 	(Caret_print.string_atom !atom);
-	match (getFormula form) with
+	*)match (getFormula form) with
 
 	  CNot f -> addForm (findFormula f closure) !atom
 	| _ -> 
