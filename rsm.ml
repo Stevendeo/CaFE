@@ -168,8 +168,6 @@ let mkReturn name ?(acpt = Id_Formula.Set.empty) stmt atom box ext r_mod =
     plugExitBox box ext st ;
     st
 
-
-(** Returns [true] iff the state is an entry state *)
 let isExit state = match state.s_info with Tag _ -> false | TagR -> true
 
 let isCall state = state.call <> None
@@ -346,7 +344,10 @@ let addExits s_list r_mod =
 
 exception Fail_through_box
 let throughBox state box = 
-  
+  let () = 
+    Caret_option.debug ~dkey "State %a through box %a"
+      RState.pretty state
+      Box.pretty box in
   try 
     if isCall state
     then RState.Map.find state box.b_entries
@@ -355,7 +356,9 @@ let throughBox state box =
       then RState.Map.find state box.b_exits
       else (raise Fail_through_box)
   with 
-    Not_found -> RState.Set.empty
+    Not_found -> 
+      Caret_option.debug ~dkey "Transition not found"; 
+      RState.Set.empty
   | Fail_through_box -> raise Not_found
 
 let getSuccs (state:RState.t) box = 
@@ -591,7 +594,7 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
 	if isExit state
 	then
 	  begin
-	    Caret_option.debug ~dkey "This is an exit";
+	    Caret_option.debug ~dkey "%a is an exit" RState.pretty state;
 	    try 
 	      let box = List.hd box_list in
 	      Caret_option.debug 
@@ -609,7 +612,7 @@ let dfs ?(pre = fun _ _ -> ()) ?(post = fun _ _ -> ()) start =
 	  end
 	else 
 	  begin
-	    Caret_option.debug ~dkey "This is not an exit";
+	    Caret_option.debug ~dkey "%a is not an exit"  RState.pretty state;
 	    RState.Set.iter (
 	      fun st -> 
 		(*try*)
@@ -636,7 +639,7 @@ let simplifyAutomaton rsm =
 
   let useful_exits = ref RState.Set.empty in
 
-  let pre state _ = 
+  let pre state box = 
     if not(RState.Set.mem state !state_accessible)
     then
       begin
@@ -648,7 +651,7 @@ let simplifyAutomaton rsm =
 	  (RState.Set.iter
 	     (fun s -> 
 	       Caret_option.debug ~dkey 
-		 "%a" RState.pretty s) state.s_succs);
+		 "%a" RState.pretty s) (getSuccs state box));
 	
 	state_accessible := RState.Set.add state !state_accessible
 	  

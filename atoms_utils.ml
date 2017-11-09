@@ -74,3 +74,20 @@ let isACall a = (testIs a) = 0
 let isARet a = (testIs a) = 1
 
 let isAInt a = (testIs a) = 2
+
+let rec isNeg = function
+  | CNot CFalse | CTrue -> false
+  | CNot CTrue | CFalse -> true
+  | CNot _ -> true
+  | COr (f1,f2) | CAnd (f1,f2) -> isNeg f1 && isNeg f2
+  | _ -> false (* Todo : error prone *)
+  
+
+let hasPositiveAbstractNext atom = 
+  Id_Formula.Set.exists 
+    (fun form -> 
+       match form.form with
+	 CNext (Abstract,f) -> not(isNeg f (* *))
+       | _ -> false
+    )
+    (getPropsFromAtom  atom)

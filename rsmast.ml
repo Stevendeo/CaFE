@@ -185,7 +185,7 @@ and RState:
     include Datatype.Make_with_collections (RState_Make_Input)
     let pretty_state_set fmt s = 
       Set.iter
-        (fun s -> Format.fprintf fmt "%a" pretty s)
+        (fun s -> Format.fprintf fmt "%a --" pretty s)
         s
   end
 and Ext_state : sig 
@@ -296,7 +296,7 @@ sig
 
     let pretty_state_map fmt s = 
       RState.Map.iter
-        (fun s1 s2 -> Format.fprintf fmt "%a -> %a" RState.pretty s1 RState.pretty_state_set s2)
+        (fun s1 s2 -> Format.fprintf fmt "%a -> %a\n" RState.pretty s1 RState.pretty_state_set s2)
         s
 
 
@@ -364,9 +364,10 @@ and Rsm_module:Datatype.S_with_collections with type t = Type_Rsm_module.t =
       let copy = Datatype.identity
       let rehash = Datatype.identity
       let mem_project = Datatype.never_any_project
-	
+      
       let varname (m:t) = "module_" ^ m.mod_name
-
+                                        
+      let pretty fmt t = Format.fprintf fmt "%s" (varname t)
       let reprs = 
         [{
 	  mod_name = "";

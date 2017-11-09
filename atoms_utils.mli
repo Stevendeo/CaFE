@@ -36,3 +36,7 @@ val isARet : atom -> bool
 
 val isAInt : atom -> bool
 
+(** Checks is an atom contains X@A of something positive.
+    When a function reaches an exit, any X@A must be false.
+*)
+val hasPositiveAbstractNext : atom -> bool

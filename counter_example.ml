@@ -62,13 +62,13 @@ let backward_dataflow_from_state s =
       end
   in
   let () = 
-    ignore (Cil.visitCilPredicate (registers_vars :> Cil.cilVisitor) (first_order_predicate) )in
+    ignore (Cil.visitCilPredicate (registers_vars :> Cil.cilVisitor) (first_order_predicate) )
+  in
   let () = 
     Back_dataflow.CafeStartData.clear () in
   let init_data = (first_order_predicate,Logic_var.Set.elements !vars) in
   let () = 
-    Back_dataflow.CafeStartData.add s.s_stmt init_data
-  in
+    Back_dataflow.CafeStartData.add s.s_stmt init_data in
   let () = (* crucial step : registers every block in the file. *)
     let v = Back_dataflow.block_registerer ()
     in
@@ -76,10 +76,16 @@ let backward_dataflow_from_state s =
   in
   let module Pred_Cafe_Backward = 
 	Back_dataflow.Cafe_Backward 
-	  (struct let pred = init_data end) in
+	  (struct let pred = init_data end) in 
+  let () = 
+    Caret_option.debug ~dkey
+      "Starting back dataflow computation..."  in
   let () = 
     Pred_Cafe_Backward.compute [s.s_stmt]
   in  
+  let () = 
+    Caret_option.debug ~dkey
+      "Back dataflow done."  in
   let entry = 
     let main = (!Parameter_builder.find_kf_by_name "main") in
     match main.fundec with
@@ -122,45 +128,44 @@ let backward_dataflow_from_state s =
   
   answer
 
-let testAcceptance rsm = 
-
-  let main = Rsm.getMainMod rsm in 
+let moduleTestAcceptance mdl = 
   let good_atoms = ref Atoms.Atom.Set.empty in
   let bad_atoms = ref Atoms.Atom.Set.empty in
   RState.Set.iter
     (fun state -> 
-      let to_delete = 
-	if Atoms.Atom.Set.mem state.s_atom !bad_atoms
-	then true 
-	else if Atoms.Atom.Set.mem state.s_atom !good_atoms
-	then false 
-	else 
-	  match state.s_stmt.skind with
-	    Cil_types.Return _ -> 
-	      let () = 
-		Caret_option.debug ~dkey
-		  "Can %a end the program ?"
-                  Atoms.Atom.pretty state.s_atom
-              in
-	      begin 
-		match backward_dataflow_from_state state with 
-		  Unsat -> 
-		    let () = bad_atoms := Atoms.Atom.Set.add state.s_atom !bad_atoms in
-		    true 
-		| _ -> 
-		  let () = good_atoms := Atoms.Atom.Set.add state.s_atom !good_atoms in
-		  false 
-		  
-	      end
-	  | _ -> false
-      in
-      if to_delete 
-      then
-	let () = 
-	  Caret_option.feedback "Deleting %a"
-	    RState.pretty state	  
-	in
-	Rsm.deleteRState state
-    ) main.states
+       let isret = match state.s_stmt.skind with Return _ -> true | _ -> false in
+       if isret 
+       then 
+         let to_delete = 
+         if Atoms.Atom.Set.mem state.s_atom !bad_atoms
+         then true 
+         else if Atoms.Atom.Set.mem state.s_atom !good_atoms
+         then false 
+         else 
+           let () = 
+             Caret_option.debug ~dkey
+               "Can state %a with atom %a end the module %a ?"
+               RState.pretty state
+               Atoms.Atom.pretty state.s_atom
+               Rsmast.Rsm_module.pretty mdl
+           in
+           begin 
+             match backward_dataflow_from_state state with 
+               Unsat -> 
+               let () = bad_atoms := Atoms.Atom.Set.add state.s_atom !bad_atoms in
+               true 
+             | _ -> 
+               let () = good_atoms := Atoms.Atom.Set.add state.s_atom !good_atoms in
+               false 
+                 
+           end in
+           if to_delete 
+           then
+             let () = 
+               Caret_option.feedback "Deleting %a"
+	         RState.pretty state	  
+             in
+             Rsm.deleteRState state) 
+    mdl.states
   
-  
+let testAcceptance rsm = moduleTestAcceptance (Rsm.getMainMod rsm)

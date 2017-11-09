@@ -322,9 +322,13 @@ let if_conds_as_pred (s : stmt list) : predicate =
     let () = 
       Caret_option.debug ~dkey:dkey_stmt ~level:2
 	
-	"Statement %a :\n old = @[%a@]\npred = @[%a@] "
-	Printer.pp_stmt
-	s
+        "Statement %a :\n"
+        Printer.pp_stmt
+        s;
+      
+      Caret_option.debug ~dkey:dkey_stmt ~level:6
+	
+        "old = @[%a@]\npred = @[%a@] "
 	Printer.pp_predicate
 	(fst old)
 	Printer.pp_predicate

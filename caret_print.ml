@@ -39,9 +39,14 @@ let print_rsm_complete_state_info fmt rsm =
        RState.Set.iter
          (fun state -> 
             Format.fprintf fmt "%a\n" print_state state)
-         rmod.states)
+         rmod.states;
+       Format.fprintf fmt "%a represented by : \n" 
+         Rsm_module.pretty rmod;
+       Box.Set.iter
+         (fun (b:Box.t) -> 
+            Format.fprintf fmt "%a\n" Box.pretty_complete b)
+         rmod.box_repres)
     rsm.rsm_mod
-
 
 let print_rsm_simple_info fmt rsm = 
   let total_trans = ref 0 in 
@@ -101,11 +106,11 @@ let string_stmt (stmt:Cil_types.stmt) =
 	 stmt;
        Format.flush_str_formatter ()
       )
-  in (*
+  in 
   if String.length orig_str > 15
   then
    String.sub orig_str 0 15
-  else*)
+  else
     orig_str
 
 

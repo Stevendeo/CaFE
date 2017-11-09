@@ -169,3 +169,12 @@ module Print_memo = False
       let option_name = "-memoizer"
       let help = "undocumented"
     end )
+
+
+module Unreachable_states = False
+      (
+    struct
+      let option_name = "-cafe-unr"
+      let help = "when on (on by default),\
+                  considers value is right when it says a state is unreachable. "
+    end )

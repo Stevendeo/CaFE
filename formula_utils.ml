@@ -316,10 +316,13 @@ let nextReq info closure atom1 atom2 =
       res
 	
 let absNextReq closure atom1 atom2 = 
-
+  Caret_option.debug ~dkey:dkey_next
+    "Abstract requirements";
   nextReq Abstract closure atom1 atom2
     
 let glNextReq closure atom1 atom2 = 
+  Caret_option.debug ~dkey:dkey_next
+    "General requirements";
   
   nextReq General closure atom1 atom2
 
@@ -555,7 +558,7 @@ let closure formula =
     then 
       let () = Caret_option.feedback "Formula already in the closure" in acc
     else
-      let () = Caret_option.feedback "Formula not in the closure" in
+      let () = Caret_option.feedback "Adding to the closure" in
       begin 
 	match formula with 
 	  CNext (_ , f) -> 

@@ -68,8 +68,9 @@ let todoAdd info =
 let mkRStateSetFromStmt name stmt kf r_mod atoms = 
 
   let test atom = 
-    (*(getAtomKind atom) = at_kind &&*) (isConsistent stmt kf atom)
-  in
+    (*(getAtomKind atom) = at_kind &&*) 
+    (isConsistent stmt kf atom)
+     in
   if isMainMod r_mod
   then
     Atom.Set.fold
@@ -302,7 +303,7 @@ object(self)
 
 	  Atom.Set.fold
 	    (fun atom acc -> 
-	      	      
+	      	if Atoms_utils.hasPositiveAbstractNext atom then acc else
 		(mkRState 
 		   ("exit" 
 		    ^ new_mod.mod_name ^ "_" 
@@ -315,42 +316,6 @@ object(self)
 	    )
 	    (Hashtbl.find atoms IInt)
 	    []
-	  (*
-	  List.fold_left
-	    (fun acc atom -> 
-	      
-	      if 
-		(getAtomKind atom) = IInt	        
-	      then
-		(List.fold_left
-		   (fun acc2 atom2 -> 
-		     if 
-		       (getAtomKind atom2) = IRet 
-		       && glNextReq closure atom atom2 
-		     (* One of the requirements
-			for an exit to have a 
-			chance to be accessible.
-			Check for LBLEXIT. *)
-		     then
-		       (mkRState 
-			  ("exit" 
-			   ^ (string_of_int new_mod.mid) ^ "_" 
-			   ^ vi.vname ^ "_rmod")
-			  exit_stmt
-			  atom
-			  (IProp atom2)
-		       new_mod 
-		       )::acc2
-		     else
-		       acc2
-		   )
-		   acc
-		   possible_return_atom
-		)
-	      else acc
-	    )
-	    []
-	    atoms*)
 	in
 
 	addEntries entry_states new_mod;
@@ -463,36 +428,7 @@ let createTransTo closure r_mod kf actual_stmt =
 		~dkey:dkey_trans
 		"Previous statement : %a"
 		Printer.pp_stmt prev_stmt in
-	    (* We need to test if a statement is accessible from a If stmt. For 
-	       example, x=0; if (!x){f();} g(); -> g is not accessible directly
-	       from the If stmt. *)
-	    let is_direct_succ = (*	      
-	      match prev_stmt.skind with
-		If (exp,_,_,_) -> 
-		  
-		  let is_possible = 
-		    !Db.Value.eval_expr 
-		      ~with_alarms:CilE.warn_none_mode 
-		      (Db.Value.get_stmt_state prev_stmt)
-		      exp
-		  in
-		    (* If exp is possibly true & the statement is the first 
-		       succ, or exp is never possible & the statement is not 
-		       the first succ, then the transition is possible.*)
-		  begin
-		    ((Cvalue.V.contains_non_zero is_possible) 
-		    && 
-		      (List.hd prev_stmt.succs).sid = actual_stmt.sid)
-		    ||
-		      (not(Cvalue.V.contains_non_zero is_possible)
-		       &&
-			 ((List.hd prev_stmt.succs).sid <> actual_stmt.sid))
-		  end
-		    
-	      | _ ->*) true
-	    in
-	    if is_direct_succ
-	    then 
+	    
 	      let prev_list = 
 		try
 		  (Stmt.Hashtbl.find stmt_hshtbl prev_stmt)
@@ -549,8 +485,7 @@ let createTransTo closure r_mod kf actual_stmt =
 		  ~dkey:dkey_trans "%i states" (RState.Set.cardinal prev_list)
 	      in
 	      prev_list::acc
-	    else
-	      acc
+	    
 	  )
 	  prev_lists
 	  actual_stmt.preds
@@ -584,24 +519,22 @@ let createTransTo closure r_mod kf actual_stmt =
       let atom_state =  state.s_atom in (* A' *)
       let info_state = state.s_info in (* t' *)
 
+      let glNext = glNextReq closure atom_prev atom_state
+      and absNext = absNextReq closure atom_prev atom_state
+      and callEq = 
+        Id_Formula.Set.equal 
+          (callerFormulas atom_prev) 
+          (callerFormulas atom_state)
+      in
        Caret_option.debug 
 	~dkey:dkey_trans ~level:3
 	"%b -- %b -- %b -- %b"
 	(info_prev = info_state)
-	(glNextReq closure atom_prev atom_state)
-	(absNextReq closure atom_prev atom_state)
-	(Id_Formula.Set.equal 
-	   (callerFormulas atom_prev) 
-	   (callerFormulas atom_state))
-      ;
+        glNext
+        absNext
+        callEq;
       
-      info_prev = info_state 
-      && glNextReq closure atom_prev atom_state
-      && absNextReq closure atom_prev atom_state
-      && (Id_Formula.Set.equal 
-	    (callerFormulas atom_prev) 
-	    (callerFormulas atom_state))
-	
+      info_prev = info_state && glNext && absNext && callEq
 	
    (* First case : state.s_stmt = Instr (Call _ ) *)
    in
@@ -692,20 +625,17 @@ let createTransTo closure r_mod kf actual_stmt =
 	    ~dkey 
 	    "This state is not associated to an exit." 
       in*)
+
+      (*(not(Atoms_utils.hasAbstractNext atom_exit))&&  -- Assured by construction, 
+        test already done*) 
+
       (info_ret = Tag Fin) &&
 	(glNextReq closure atom_ret atom_exit) &&
 	(absNextReq closure atom_ret atom_exit) &&
 	(Id_Formula.Set.equal 
 	  (callerFormulas atom_ret) 
-	  (callerFormulas atom_exit)) &&
-	(not(
-	  Id_Formula.Set.exists 
-	    (fun form -> 
-	      match getFormula form with
-		CNext (Abstract,_) -> true
-	      | _ -> false
-	    )
-            (getPropsFromAtom  atom_exit)))
+	  (callerFormulas atom_exit)) 
+	
       
       (*&& let test? = (glNextReq closure atom_exit info_exit) *) 
       (* Can be tested at creation, check for LBLEXIT*)
@@ -767,6 +697,8 @@ let createTransTo closure r_mod kf actual_stmt =
    in
    
    let modificationTest pre_state post_state = 
+     let () = Caret_option.debug ~dkey:dkey_trans ~level:2
+         "Modification test" in
      match post_state.s_stmt.skind with
      
        (*Instr (Set ((Var var,_),_,_)) -> 
@@ -827,6 +759,7 @@ let createTransTo closure r_mod kf actual_stmt =
    in
 
    let treatRStates goodTest start_set next_set = 
+     if RState.Set.is_empty start_set || RState.Set.is_empty next_set then () else 
      let () = 
        Caret_option.debug 
 	 ~dkey:dkey_trans
@@ -859,7 +792,6 @@ let createTransTo closure r_mod kf actual_stmt =
 	     
 	     if 
 	       (not (modificationTest start_state next_state))
-		 
 	     then
 	       Caret_option.debug 
 		 ~dkey:dkey_trans ~level:2
@@ -880,9 +812,12 @@ let createTransTo closure r_mod kf actual_stmt =
 	    )
 	    
 	    next_set
-	)
-	
-	start_set;
+       )
+       start_set;
+     Caret_option.debug ~dkey:dkey_trans ~level:2
+       "Linking done"
+     
+     
     in
     
     let treatCall prev_is_ret prev_states = 
@@ -1019,8 +954,9 @@ let createTransTo closure r_mod kf actual_stmt =
 	      
 	    end
 	)
-	prev_lists
-    in ()  
+	prev_lists;
+    Caret_option.debug ~dkey:dkey_trans ~level:2 "Statement treatment done";
+    in ()
 
 let rsm_create_states closure atoms = 
 
@@ -1056,7 +992,7 @@ object(self)
     else
    *)
     let state = Db.Value.get_stmt_state stmt in
-    if not(Db.Value.is_reachable state)
+    if Caret_option.Unreachable_states.get () && not(Db.Value.is_reachable state)
     then 
       let isret = function | Return _ -> true | _ -> false in 
       let () = 
