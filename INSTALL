@@ -1,0 +1,22 @@
+CaFE only requires Frama-C, so start by installing Frama-C from the sources or
+from OPAM.
+
+OPAM 
+     
+     Install the opam packet manager, then 'opam install frama-c'
+
+From the sources
+     
+     You can download Frama-C in http://frama-c.com/
+
+Once Frama-C is installed : 
+
+     autoconf
+     ./configure
+     make depend
+     make
+     sudo make install
+     
+     (Optionnal, will print the options and check if it is well installed) 
+     frama-c -cafe-h
+     

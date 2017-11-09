@@ -1,0 +1,96 @@
+***********               ******               ***********       ***********
+***********              ********              ***********       ***********
+**                      ***    ***             **                **
+**                     ***      ***            **                **           
+**                    ***        ***           ***********       ***********  
+**                   ****************          ***********       ***********  
+**                  ******************         **                **           
+**                 ***              ***        **                **           
+***********       ***                ***       **                ***********
+***********      ***                  ***      **                ***********
+
+
+
+A Frama-C model-checker.
+
+********************************************************************************
+
+INSTALLATION
+
+See INSTALL
+
+********************************************************************************
+
+USAGE
+
+Simply type "frama-c -cafe your_prog.c -cafe-formula your_spec.caret"
+
+Here is a sample of currently available options.
+
+-atom-simp          when on (on by default), tries to delete
+                    self-inconsistent atoms. Uses CVC3. (set by default,
+                    opposite option is -no-atom-simp)
+-cafe               when on (off by default), model checking with CaRet
+                    formulas (opposite option is -no-cafe)
+-cafe-assert        when on (on by default), considers loop invariants as
+                    true (set by default, opposite option is -cafe-no-assert)
+-cafe-atoms         generates a file containing the atoms of the formula
+                    (opposite option is -cafe-no-atoms)
+-cafe-atoms-output <output-file>  file where the set of atoms from the
+                    formula is output (default : console)
+-cafe-auto          when on (on by default), generates the automaton.
+                    Desactivate only for debug (set by default, opposite
+                    option is -cafe-no-auto)
+-cafe-closure       generates a file containing the closure set of the
+                    formula in argument (opposite option is -cafe-no-closure)
+-cafe-closure-output <output-file>  file where the formula closure is output
+                    (default : console)
+-cafe-dot           when on (off by default), generates the dot
+                    representation of the automaton. When off, generates some
+                    informations about the automaton. (opposite option is
+                    -cafe-no-dot)
+-cafe-dot-output <output-file>  file where the automaton, as a dot file, is
+                    output (default : console)
+-cafe-end           when on (on by default), considers the c program ends
+                    eventually in any case. (set by default, opposite option
+                    is -cafe-no-end)
+-cafe-formula <caret-formula>  file in which the formula is written.
+-cafe-main          when on (on by default), only checks the first loop
+                    encourntered in the main.c file. Infinite paths on other
+                    functions are not considered. (set by default, opposite
+                    option is -cafe-no-main)
+-cafe-output <output-file>  file where the result is output (default :
+                    console)
+-cafe-simp-level <n>  level of simplification : 0 for nothing ; 1 for
+                    deleting unreachable states ; 2 for deleting dead-end
+                    states ; 3 for complete simplification (2 by default) 
+-cafe-states <output-file>  in this file will be found every information
+                    about each state
+-cafe-unr           when on (on by default),considers value is right when it
+                    says a state is unreachable.  (opposite option is
+                    -cafe-no-unr)
+-fignore <<f1;...>>  List of the functions ignored by the analysis
+
+********************************************************************************
+Specification semantics
+
+Specifications are written in the temporal logic CaRet (see "A temporal logic of nested calls and returns" or "Au temps en emporte le C" for details) 
+
+Operators: 
+{p} (an ACSL property. Always between brackets)
+X(p) (next state, p holds)
+(p) U (q) (p holds until q does)
+F (p) (= true U p)
+G (p) (= not (F (not p))) 
+
+Tags:
+In CaRet, operators have tags refering to the trace they are studying: 
+"@N" : the usual execution path
+"@A" : the abstract execution path, i.e. when a function is encountered, it skips it and goes to the return
+"@P" : the past execution path, i.e. the previous nested call.
+
+For example : 
+    G@A({x > 0}) <=> 
+    	   At any statement of the main function, x > 0 holds.
+    G@N({p} => X@A(X@P {q})) <=> 
+    	  Whenever p holds, then q must have hold at the previous nested call. 
