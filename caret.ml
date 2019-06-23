@@ -12,7 +12,7 @@ open Type_Rsm_module
 let dkey = Caret_option.register_category "main_caret" 
 let output_fun chan = Printf.fprintf chan
 
-let treatment file formula closure atoms = 	    
+let treatment file formula closure atoms =
   
   let () = (* Each fundec must be prepared *)
       let vis = 
@@ -69,52 +69,51 @@ let treatment file formula closure atoms =
     Caret_visitor.compute_rsm file formula closure atoms 
   in
   (** Different actions *)
-  let cex = ref RState.Set.empty 
+  let cex = ref RState.Set.empty
     (* The place where the counterexample is saved, if there is one *)
   in
 
-  let () = 
-    
+  let () =
+
     if Caret_option.Simplify.get () <> 0
-    then 
+    then
       begin
 	Caret_option.feedback "Starting the simplification";
 	Rsm.simplifyAutomaton rsm;
-	
-      end 
+
+      end
   in
 
 
   (** Loop analysis  *)
   begin (* Acceptance *)
-    
+
     if Create_res.get ()
     then
       let () = Caret_option.feedback "Acceptance analysis" in
-      let () = 
-	  Counter_example.testAcceptance rsm
+      let () = Counter_example.testAcceptance rsm
       in
       if not (Caret_option.Main_ends.get ())
-      then 
-        let () = 
-          Caret_option.feedback 
+      then
+        let () =
+          Caret_option.feedback
             "Program does not end, check the automaton (dot -Tpdf auto.dot > auto.pdf) to see if \
              there is accepting paths.";
           Caret_option.Output_dot.set "auto.dot" in
         Caret_option.Dot.set true
-      else 
+      else
       if RState.Set.exists
-	   (fun s -> 
+	   (fun s ->
 	     match s.s_stmt.Cil_types.skind with
-	       Cil_types.Return _ -> 
+	       Cil_types.Return _ ->
 		 (not s.deleted)
 	     | _ -> false)
 	   (Rsm.getMainMod rsm).states
-      then 
+      then
 	Caret_option.feedback "Cannot prove the formula."
-      else 
+      else
 	Caret_option.feedback "Every path has been deleted : no counter example found !"
-       
+
   end; (* Acceptance *)
 
   begin (* Spurious *)

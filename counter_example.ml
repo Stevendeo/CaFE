@@ -93,7 +93,7 @@ let backward_dataflow_from_state s =
 	let () = Cfg.prepareCFG fdec
 	in
 	List.hd (fdec.sbody.bstmts)
-    | _ -> assert false
+    | _ -> Caret_option.log "CaFE does not work on non defined function. Exit."; assert false
   in
   let pred,vars = 
     try  

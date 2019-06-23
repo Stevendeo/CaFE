@@ -7,7 +7,6 @@ open Cil
 let dkey = Caret_option.register_category "smt_solv"
 let dkey_z3 = Caret_option.register_category "formula_utils:z3"
 
-
 let read_file chan =
   let lines = ref [] in
   try
